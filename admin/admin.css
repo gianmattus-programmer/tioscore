@@ -225,3 +225,68 @@ body.client-mode .sidebar{display:none}body.client-mode .main{margin-left:0}body
   .score-scale-legend{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}
   .score-scale-legend small{font-size:.46rem}
 }
+
+
+/* ===== Corrección scroll independiente + privacidad nombre ===== */
+@media(min-width:981px){
+  .workspace{
+    height:calc(100dvh - 132px);
+    min-height:0;
+    overflow:hidden;
+  }
+  .analysis-columns{
+    height:calc(100% - 40px);
+    min-height:0;
+    overflow:hidden;
+  }
+  .analysis-pane{
+    min-height:0;
+    overflow:hidden;
+  }
+  .pane-scroll{
+    min-height:0;
+    height:100%;
+    overflow-y:auto;
+    overflow-x:hidden;
+    overscroll-behavior-y:contain;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-gutter:stable;
+  }
+}
+
+.pane-client .client-identity{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  gap:7px;
+  padding:20px 18px 18px;
+}
+.pane-client .client-identity .avatar{
+  margin:0 auto 2px;
+}
+.pane-client .identity-copy{
+  width:100%;
+  text-align:center;
+}
+.pane-client .identity-copy h2{
+  text-align:center;
+  font-size:1.35rem;
+}
+.pane-client .identity-copy p{
+  text-align:center;
+}
+.pane-client .risk-label{
+  align-self:center;
+  margin-top:3px;
+}
+
+@media(max-width:600px){
+  .pane-client .client-identity{
+    display:flex;
+  }
+  .pane-client .risk-label{
+    grid-column:auto;
+  }
+}

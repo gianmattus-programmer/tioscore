@@ -64,6 +64,22 @@ function showApp(){show('#app');renderHistory();checkAIStatus()}
 function esc(v=''){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function dateNow(){return new Intl.DateTimeFormat('es-PE',{dateStyle:'medium',timeStyle:'short'}).format(new Date())}
 function money(n){const v=Number(n);return Number.isFinite(v)?'S/ '+v.toLocaleString('es-PE',{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2}):String(n??'—')}
+function firstName(value){
+ const s=String(value||'').trim().replace(/\s+/g,' ');
+ if(!s||/no informado/i.test(s))return s||'Cliente';
+ return s.split(' ')[0];
+}
+function isSurnameLabel(label=''){
+ return /(^|\b)(apellido|apellidos)(\b|$)/i.test(String(label));
+}
+function isPersonalNameLabel(label=''){
+ return /(^|\b)(nombre|nombres|titular|persona)(\b|$)/i.test(String(label));
+}
+function clientSafeValue(label,value){
+ if(isSurnameLabel(label))return null;
+ if(isPersonalNameLabel(label))return firstName(value);
+ return value;
+}
 
 $('#loginForm')?.addEventListener('submit',async e=>{
  e.preventDefault();$('#loginError').textContent='';
@@ -214,8 +230,9 @@ function loadAnalysis(a,isDemo=false,filename=''){
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
  $('#analysisMeta').textContent=(isDemo?'Demo':'Procesado')+' · '+dateNow();
  $('#confidenceValue').textContent='Confianza '+(x.confidence||0)+'%';
- $('#clientName').textContent=x.client.name||'Cliente';
- $('#initials').textContent=(x.client.name||'TS').split(/\s+/).filter(Boolean).map(v=>v[0]).slice(0,2).join('').toUpperCase();
+ const visibleName=firstName(x.client.name||'Cliente');
+ $('#clientName').textContent=visibleName;
+ $('#initials').textContent=(visibleName[0]||'T').toUpperCase();
  $('#clientSubline').textContent=[x.client.document||'Documento no informado',x.client.age,x.client.reportDate].filter(Boolean).join(' · ');
  const scoreInfo=renderScoreGauge(x.score);
  $('#riskBadge').textContent=scoreInfo.category;
@@ -286,13 +303,28 @@ function normalize(a){
 function renderRecommendations(items){$('#recommendations').innerHTML=items.map((r,i)=>'<div class="rec"><div class="rec-num">'+(i+1)+'</div><div><h4>'+esc(r.title)+'</h4><p>'+esc(r.text)+'</p><span class="impact">'+esc(r.impact||'')+'</span></div></div>').join('')||'<div class="empty-line">Sin recomendaciones suficientes.</div>'}
 function renderChecklist(items){$('#checklist').innerHTML=items.map((t,i)=>'<label class="check"><input type="checkbox" data-i="'+i+'"><span>'+esc(t)+'</span></label>').join('');$$('#checklist input').forEach(v=>v.addEventListener('change',()=>{v.closest('.check').classList.toggle('done',v.checked);updateCheck()}));updateCheck()}
 function updateCheck(){const all=$$('#checklist input'),done=all.filter(x=>x.checked).length;$('#checkProgress').textContent=done+' / '+all.length}
-function renderData(data){$('#detectedData').innerHTML=Object.entries(data).map(([k,v])=>'<div class="data-item" data-key="'+esc(k)+'"><span>'+esc(k)+'</span><b>'+esc(v||'No informado')+'</b></div>').join('')||'<div class="empty-line">No se detectaron campos.</div>'}
+function renderData(data){
+ const rows=Object.entries(data).filter(([k])=>!isSurnameLabel(k)).map(([k,v])=>{
+  const safe=clientSafeValue(k,v);
+  return '<div class="data-item" data-key="'+esc(k)+'"><span>'+esc(k)+'</span><b>'+esc(safe||'No informado')+'</b></div>';
+ });
+ $('#detectedData').innerHTML=rows.join('')||'<div class="empty-line">No se detectaron campos.</div>';
+}
 $('#editDataBtn')?.addEventListener('click',()=>{if(!state.analysis)return;state.editing=!state.editing;$('#editDataBtn').textContent=state.editing?'Guardar':'Editar datos';$$('#detectedData .data-item').forEach(el=>{const key=el.dataset.key,b=el.querySelector('b');if(state.editing)b.outerHTML='<input value="'+esc(state.analysis.raw[key])+'">';else{const i=el.querySelector('input');state.analysis.raw[key]=i.value;i.outerHTML='<b>'+esc(i.value)+' *</b>'}})});
 function clsStatus(s=''){s=s.toLowerCase();return /normal|al día|vigente|cancelad/.test(s)?'status-good':/mora|vencid|impag|castig|pérdida|pendiente/.test(s)?'status-bad':'status-warn'}
 function renderEntities(items){$('#entityCount').textContent=items.length+' registros';$('#entitiesTable').innerHTML=items.length?'<div class="table-row head"><span>Entidad / producto</span><span>Saldo</span><span>Estado</span></div>'+items.map(v=>'<div class="table-row"><b>'+esc(v.name)+(v.product?' · '+esc(v.product):'')+'</b><span>'+esc(v.balance||'No informado')+'</span><span class="'+clsStatus(v.status)+'">'+esc(v.status||v.classification||'No informado')+'</span></div>').join(''):'<div class="empty-line" style="padding:10px">No informado en el reporte.</div>'}
 function renderObligations(items){$('#obligationsTable').innerHTML=items.length?'<div class="table-row head"><span>Obligación</span><span>Saldo</span><span>Estado</span></div>'+items.map(v=>'<div class="table-row"><b>'+esc(v.entity)+(v.product?' · '+esc(v.product):'')+'<small style="display:block;color:#667085;font-weight:400">'+esc(v.detail||'')+'</small></b><span>'+esc(v.balance||'—')+'</span><span class="'+clsStatus(v.status)+'">'+esc(v.status||'—')+'</span></div>').join(''):'<div class="empty-line" style="padding:10px">No se detectaron obligaciones detalladas.</div>'}
 function renderInquiries(items){$('#inquiriesList').innerHTML=items.length?items.map(v=>'<div class="timeline-item"><time>'+esc(v.date||'—')+'</time><div><b>'+esc(v.entity||'No informado')+'</b><small>'+esc(v.type||'Consulta')+'</small></div></div>').join(''):'<div class="empty-line">El reporte no informa consultas.</div>'}
-function renderSections(sections){$('#reportSections').innerHTML=sections.length?sections.map(s=>'<div class="report-section"><h4>'+esc(s.title||'Sección')+'</h4><dl>'+(Array.isArray(s.items)?s.items:[]).map(i=>'<div class="kv"><dt>'+esc(i.label)+'</dt><dd>'+esc(i.value||'No informado')+'</dd></div>').join('')+'</dl></div>').join(''):'<div class="empty-line">No hay bloques adicionales.</div>'}
+function renderSections(sections){
+ const html=sections.map(s=>{
+  const items=(Array.isArray(s.items)?s.items:[]).filter(i=>!isSurnameLabel(i.label)).map(i=>{
+   const safe=clientSafeValue(i.label,i.value);
+   return '<div class="kv"><dt>'+esc(i.label)+'</dt><dd>'+esc(safe||'No informado')+'</dd></div>';
+  }).join('');
+  return items?'<div class="report-section"><h4>'+esc(s.title||'Sección')+'</h4><dl>'+items+'</dl></div>':'';
+ }).join('');
+ $('#reportSections').innerHTML=html||'<div class="empty-line">No hay bloques adicionales.</div>';
+}
 function renderMetrics(items){$('#metricsGrid').innerHTML=items.map(m=>'<div class="metric '+(m.danger?'danger':'')+'"><b>'+esc(m.value)+'</b><span>'+esc(m.label)+'</span></div>').join('')||'<div class="empty-line">Sin métricas.</div>'}
 function renderChart(series){
  const svg=$('#debtChart');if(!series.length){svg.innerHTML='<text x="450" y="140" text-anchor="middle" class="chart-label">Sin serie histórica</text>';$('#chartLegend').innerHTML='';return}
