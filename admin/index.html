@@ -54,7 +54,6 @@
           <h1>Centro de análisis</h1>
         </div>
         <div class="top-actions">
-          <button id="clientModeBtn" class="btn ghost">Vista cliente</button>
           <button id="demoBtn" class="btn ghost admin-only">Demo</button>
           <button id="newAnalysisBtn" class="btn primary admin-only">+ Nuevo análisis</button>
         </div>
@@ -85,6 +84,7 @@
               <header class="pane-header">
                 <span class="pane-index">01</span>
                 <div><span class="eyebrow">LECTURA DEL REPORTE</span><h2>Interpretación y plan</h2></div>
+                <span class="advisor-badge">SOLO ASESOR</span>
               </header>
               <div class="pane-scroll">
                 <section class="pane-block">
@@ -125,8 +125,8 @@
             <section class="analysis-pane pane-client">
               <header class="pane-header client-header">
                 <span class="pane-index">02</span>
-                <div><span class="eyebrow">FICHA INTEGRAL</span><h2>Información del cliente</h2></div>
-                <button id="editDataBtn" class="mini-btn admin-only">Editar datos</button>
+                <div><span class="eyebrow">VISTA CLIENTE</span><h2>Análisis financiero</h2></div>
+                <span class="client-live-badge">EN VIVO</span>
               </header>
               <div class="pane-scroll">
                 <section class="client-identity">
@@ -135,11 +135,28 @@
                   <div id="riskBadge" class="risk-label">POR REVISAR</div>
                 </section>
 
-                <section class="score-band">
-                  <div class="score-copy"><span>Score educativo</span><b id="scoreValue">—</b><small>/ 999 · no es un score oficial</small></div>
-                  <div class="score-meter"><div id="scoreMeterFill"></div></div>
+                <section class="score-band score-client">
+                  <div class="score-gauge-wrap">
+                    <svg id="scoreGaugeSvg" class="score-gauge-svg" viewBox="0 0 320 190" role="img" aria-label="Medidor de score"></svg>
+                    <div class="score-gauge-center">
+                      <span>Tu Score es</span>
+                      <b id="scoreValue">—</b>
+                      <small>de 999</small>
+                    </div>
+                  </div>
+                  <div class="score-result-copy">
+                    <b id="scoreCategory">Puntaje por revisar</b>
+                    <span id="scoreRange">Score: —</span>
+                  </div>
                   <p id="scoreDescription"></p>
                   <div id="debtDelta" class="debt-delta"></div>
+                  <div class="score-scale-legend" aria-label="Rangos del score">
+                    <span><i class="score-c1"></i><b>1–476</b><small>Muy Bajo</small></span>
+                    <span><i class="score-c2"></i><b>477–597</b><small>Bajo</small></span>
+                    <span><i class="score-c3"></i><b>598–721</b><small>Medio</small></span>
+                    <span><i class="score-c4"></i><b>722–876</b><small>Bueno</small></span>
+                    <span><i class="score-c5"></i><b>877–999</b><small>Excelente</small></span>
+                  </div>
                 </section>
 
                 <section class="client-section">
@@ -174,6 +191,7 @@
               <header class="pane-header">
                 <span class="pane-index">03</span>
                 <div><span class="eyebrow">ANÁLISIS VISUAL</span><h2>Comportamiento financiero</h2></div>
+                <span class="advisor-badge">SOLO ASESOR</span>
               </header>
               <div class="pane-scroll">
                 <section class="pane-block metrics-block">

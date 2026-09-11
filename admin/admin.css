@@ -46,3 +46,182 @@ body.client-mode .sidebar{display:none}body.client-mode .main{margin-left:0}body
 @media(max-width:980px){.sidebar{position:static;width:auto;border-right:0;border-bottom:1px solid var(--line);padding:12px 14px}.side-nav{grid-template-columns:repeat(3,1fr);margin-top:10px}.nav-item{justify-content:center}.private-pill,.sidebar-bottom{display:none}.main{margin-left:0}.topbar{position:static}.workspace{height:auto}.analysis-columns{height:auto;display:block;overflow:visible}.analysis-pane+.analysis-pane{border-left:0;border-top:1px solid var(--line)}.pane-scroll{overflow:visible}.pane-header{position:static}.view{padding:16px}.upload-card{grid-template-columns:1fr}.drop-zone{grid-column:1}.settings-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.topbar{height:auto;align-items:flex-start;flex-direction:column;padding:14px}.top-actions{width:100%}.top-actions .btn{flex:1}.side-nav{grid-template-columns:1fr}.nav-item span{display:none}.view{padding:10px}.client-identity{grid-template-columns:auto 1fr}.risk-label{grid-column:2}.data-list{grid-template-columns:1fr}.table-row{grid-template-columns:1fr}.table-row.head{display:none}.metrics-grid{grid-template-columns:1fr 1fr}.history-item{grid-template-columns:1fr}.history-item>*:first-child{grid-column:1}.workspace-meta{align-items:flex-start;height:auto;padding:6px 2px;flex-direction:column}}
 @media print{.sidebar,.topbar,.workspace-meta,.admin-only{display:none!important}.main{margin:0}.view{padding:0}.workspace{height:auto}.analysis-columns{display:block;height:auto;border:0}.analysis-pane+.analysis-pane{border-left:0;border-top:1px solid #ddd}.pane-scroll{overflow:visible}.pane-header{position:static}.action-block,.score-band{background:#fff!important;color:#111!important}.action-block *,.score-band *{color:#111!important}.chart-wrap{break-inside:avoid}}
+
+
+/* ===== Mesa en vivo: centro cliente, laterales asesor ===== */
+.analysis-columns{
+  grid-template-columns:minmax(270px,.72fr) minmax(540px,1.46fr) minmax(300px,.82fr);
+}
+.pane-reading,.pane-insights{background:#f7f6f2}
+.pane-reading .pane-header,.pane-insights .pane-header{background:#f7f6f2}
+.pane-client{
+  position:relative;
+  z-index:2;
+  background:#fff;
+  box-shadow:0 0 0 1px rgba(185,133,36,.16),0 0 36px rgba(20,25,38,.045)
+}
+.pane-client .pane-header{background:#fff}
+.advisor-badge,.client-live-badge{
+  margin-left:auto;
+  white-space:nowrap;
+  border-radius:999px;
+  padding:5px 7px;
+  font-size:.56rem;
+  letter-spacing:.08em;
+  font-weight:900
+}
+.advisor-badge{
+  background:#eceae4;
+  color:#756f64;
+  border:1px solid #dedad0
+}
+.client-live-badge{
+  background:#f7f1e5;
+  color:#86651f;
+  border:1px solid rgba(185,133,36,.20)
+}
+.client-header{
+  border-bottom-color:rgba(185,133,36,.22)
+}
+
+/* Score del cliente */
+.score-band.score-client{
+  background:#fff;
+  color:var(--ink);
+  padding:18px 18px 16px;
+  text-align:center;
+  border-bottom:1px solid var(--line)
+}
+.score-gauge-wrap{
+  width:min(100%,360px);
+  height:205px;
+  margin:0 auto -4px;
+  position:relative
+}
+.score-gauge-svg{
+  display:block;
+  width:100%;
+  height:100%;
+  overflow:visible
+}
+.score-segment{
+  transition:fill .3s ease,opacity .3s ease
+}
+.score-segment.inactive{fill:#dedede}
+.score-segment.active.score-c1{fill:#c91f26}
+.score-segment.active.score-c2{fill:#ff8a16}
+.score-segment.active.score-c3{fill:#f3c400}
+.score-segment.active.score-c4{fill:#8bc63f}
+.score-segment.active.score-c5{fill:#0aa64f}
+.score-gauge-center{
+  position:absolute;
+  inset:auto 0 31px;
+  display:grid;
+  justify-items:center;
+  line-height:1
+}
+.score-gauge-center span{
+  font-size:.84rem;
+  color:#59616d;
+  font-weight:600
+}
+.score-gauge-center b{
+  margin-top:5px;
+  color:#232b38;
+  font-size:3.15rem;
+  letter-spacing:-.055em;
+  font-weight:900
+}
+.score-gauge-center small{
+  margin-top:5px;
+  color:#69717b;
+  font-size:.68rem;
+  font-weight:700
+}
+.score-result-copy{
+  display:grid;
+  justify-items:center;
+  gap:2px;
+  margin-top:-6px
+}
+.score-result-copy b{
+  font-size:1rem;
+  color:var(--ink)
+}
+.score-result-copy span{
+  font-size:.68rem;
+  color:var(--muted);
+  font-weight:700
+}
+.score-client>p{
+  max-width:520px;
+  margin:12px auto 0;
+  color:#58616c;
+  font-size:.75rem;
+  line-height:1.55
+}
+.score-client .debt-delta{
+  margin:8px auto 0;
+  color:var(--green);
+  font-size:.7rem;
+  font-weight:700
+}
+.score-scale-legend{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:5px;
+  margin-top:15px;
+  padding-top:12px;
+  border-top:1px solid var(--line)
+}
+.score-scale-legend>span{
+  min-width:0;
+  display:grid;
+  justify-items:center;
+  gap:2px;
+  color:var(--muted)
+}
+.score-scale-legend i{
+  width:100%;
+  max-width:48px;
+  height:4px;
+  border-radius:999px;
+  display:block
+}
+.score-scale-legend i.score-c1{background:#c91f26}
+.score-scale-legend i.score-c2{background:#ff8a16}
+.score-scale-legend i.score-c3{background:#f3c400}
+.score-scale-legend i.score-c4{background:#8bc63f}
+.score-scale-legend i.score-c5{background:#0aa64f}
+.score-scale-legend b{
+  font-size:.56rem;
+  color:var(--ink)
+}
+.score-scale-legend small{
+  font-size:.50rem;
+  line-height:1.1
+}
+
+/* La columna central está pensada para ser el único encuadre compartido */
+.pane-client .pane-scroll{background:#fff}
+.pane-reading .pane-scroll,.pane-insights .pane-scroll{background:#f7f6f2}
+.pane-reading .pane-block,.pane-insights .pane-block{background:transparent}
+.pane-reading .action-block{background:var(--ink)}
+
+@media(max-width:1300px){
+  .analysis-columns{
+    grid-template-columns:minmax(245px,.68fr) minmax(500px,1.42fr) minmax(280px,.78fr)
+  }
+  .score-gauge-wrap{width:min(100%,330px)}
+}
+@media(max-width:980px){
+  .analysis-columns{display:block}
+  .advisor-badge,.client-live-badge{margin-left:auto}
+}
+@media(max-width:600px){
+  .score-gauge-wrap{height:185px}
+  .score-gauge-center{bottom:29px}
+  .score-gauge-center b{font-size:2.7rem}
+  .score-scale-legend{grid-template-columns:repeat(5,minmax(0,1fr));gap:3px}
+  .score-scale-legend small{font-size:.46rem}
+}

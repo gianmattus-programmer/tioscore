@@ -74,11 +74,8 @@ $('#logoutBtn')?.addEventListener('click',async()=>{await fetch('/api/admin-logo
 $$('.nav-item').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
 function switchView(v){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$$('.view').forEach(x=>x.classList.add('hidden'));$('#'+v+'View')?.classList.remove('hidden');if(v==='history')renderHistory()}
 $('#newAnalysisBtn')?.addEventListener('click',resetAnalysis);$('#historyNewBtn')?.addEventListener('click',()=>{switchView('analysis');resetAnalysis()});
-function resetAnalysis(){setClientMode(false);switchView('analysis');state.analysis=null;$('#resultPanel').classList.add('hidden');$('#uploadPanel').classList.remove('hidden');$('#pdfInput').value='';$('#uploadState').classList.add('hidden')}
+function resetAnalysis(){switchView('analysis');state.analysis=null;$('#resultPanel').classList.add('hidden');$('#uploadPanel').classList.remove('hidden');$('#pdfInput').value='';$('#uploadState').classList.add('hidden')}
 $('#demoBtn')?.addEventListener('click',()=>loadAnalysis(structuredClone(demo),true));
-
-$('#clientModeBtn')?.addEventListener('click',()=>setClientMode(!state.clientMode));
-function setClientMode(on){state.clientMode=on;document.body.classList.toggle('client-mode',on);$('#clientModeBtn').textContent=on?'Salir de vista cliente':'Vista cliente'}
 
 $('#pdfInput')?.addEventListener('change',e=>e.target.files[0]&&processPdf(e.target.files[0]));
 const dz=$('#dropZone');
@@ -220,8 +217,8 @@ function loadAnalysis(a,isDemo=false,filename=''){
  $('#clientName').textContent=x.client.name||'Cliente';
  $('#initials').textContent=(x.client.name||'TS').split(/\s+/).filter(Boolean).map(v=>v[0]).slice(0,2).join('').toUpperCase();
  $('#clientSubline').textContent=[x.client.document||'Documento no informado',x.client.age,x.client.reportDate].filter(Boolean).join(' · ');
- $('#riskBadge').textContent=x.risk||'POR REVISAR';
- $('#scoreValue').textContent=x.score||'—';$('#scoreMeterFill').style.left=Math.max(0,Math.min(100,(x.score||0)/9.99))+'%';
+ const scoreInfo=renderScoreGauge(x.score);
+ $('#riskBadge').textContent=scoreInfo.category;
  $('#scoreDescription').textContent=x.scoreDescription||'Sin interpretación suficiente.';
  const dc=Number(x.debtChange);$('#debtDelta').textContent=Number.isFinite(dc)&&dc!==0?(dc<0?'↓ Deuda -':'↑ Deuda +')+Math.abs(dc).toFixed(2)+'%':'Variación de deuda no determinada';
  $('#executiveSummary').textContent=x.summary||'No se generó resumen.';
@@ -233,6 +230,52 @@ function loadAnalysis(a,isDemo=false,filename=''){
  $('#advisorNotes').value=x.notes||'';
  if(!isDemo)saveToHistory(filename);
 }
+function getScoreBand(score){
+ const s=Number(score)||0;
+ if(s>=877)return {index:4,category:'Excelente Puntaje',range:'Score: 877-999'};
+ if(s>=722)return {index:3,category:'Buen Puntaje',range:'Score: 722-876'};
+ if(s>=598)return {index:2,category:'Puntaje medio',range:'Score: 598-721'};
+ if(s>=477)return {index:1,category:'Puntaje Bajo',range:'Score: 477-597'};
+ if(s>=1)return {index:0,category:'Puntaje Muy Bajo',range:'Score: 1-476'};
+ return {index:-1,category:'Puntaje por revisar',range:'Score: —'};
+}
+
+function polar(cx,cy,r,deg){
+ const rad=deg*Math.PI/180;
+ return {x:cx+r*Math.cos(rad),y:cy-r*Math.sin(rad)};
+}
+function ringSegmentPath(cx,cy,outer,inner,a1,a2){
+ const p1=polar(cx,cy,outer,a1),p2=polar(cx,cy,outer,a2);
+ const p3=polar(cx,cy,inner,a2),p4=polar(cx,cy,inner,a1);
+ return [
+  'M',p1.x.toFixed(2),p1.y.toFixed(2),
+  'A',outer,outer,0,0,1,p2.x.toFixed(2),p2.y.toFixed(2),
+  'L',p3.x.toFixed(2),p3.y.toFixed(2),
+  'A',inner,inner,0,0,0,p4.x.toFixed(2),p4.y.toFixed(2),
+  'Z'
+ ].join(' ');
+}
+function renderScoreGauge(score){
+ const info=getScoreBand(score);
+ const svg=$('#scoreGaugeSvg');
+ const s=Math.max(0,Math.min(999,Number(score)||0));
+ if(svg){
+  const cx=160,cy=158,outer=126,inner=92,gap=3.2;
+  let out='';
+  for(let i=0;i<5;i++){
+   const a1=180-i*36-gap/2;
+   const a2=180-(i+1)*36+gap/2;
+   const active=i<=info.index;
+   out+='<path class="score-segment score-c'+(i+1)+' '+(active?'active':'inactive')+'" d="'+ringSegmentPath(cx,cy,outer,inner,a1,a2)+'"></path>';
+  }
+  svg.innerHTML=out;
+ }
+ $('#scoreValue').textContent=s||'—';
+ $('#scoreCategory').textContent=info.category;
+ $('#scoreRange').textContent=info.range;
+ return info;
+}
+
 function normalize(a){
  const x=a||{};x.sourceReport=x.sourceReport||{};x.client=x.client||{};x.alerts=Array.isArray(x.alerts)?x.alerts:[];x.tags=Array.isArray(x.tags)?x.tags:[];
  x.metrics=Array.isArray(x.metrics)?x.metrics:[];x.debtSeries=Array.isArray(x.debtSeries)?x.debtSeries:[];x.debtComposition=Array.isArray(x.debtComposition)?x.debtComposition:[];
