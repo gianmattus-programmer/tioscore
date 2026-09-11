@@ -87,7 +87,15 @@ ESTRUCTURA EXACTA
  "raw":{},
  "reportSections":[
    {"title":"","items":[{"label":"","value":""}]}
- ]
+ ],
+ "reportCharts":{
+   "noteEvolution":[{"label":"","value":0}],
+   "classificationHistory":[{"label":"","NOR":0,"CPP":0,"DEF":0,"DUD":0,"PER":0}],
+   "overdueByType":[{"label":"","sbs":0,"other":0}],
+   "overdueShare":[{"label":"","value":0}],
+   "currentVsOverdue":[{"label":"","current":0,"overdue":0}],
+   "institutionShare":[{"label":"","value":0}]
+ }
 }
 
 CRITERIOS DE REPRESENTACIÓN
@@ -102,8 +110,22 @@ CRITERIOS DE REPRESENTACIÓN
 - alerts: entre 2 y 8 señales. Verde=fortaleza observada, amarillo=requiere revisión, rojo=atraso/obligación/condición negativa explícita.
 - recommendations: entre 3 y 6, ordenadas.
 - closing: cierre breve apto para explicar en vivo a un cliente.
+- reportCharts: estos datos alimentan gráficos que replican los gráficos típicos de Sentinel. NO calcules ni inventes un gráfico si el reporte no contiene base suficiente: devuelve [] para ese gráfico.
+- reportCharts.noteEvolution: serie temporal de "Evolución de Nota" o semáforo/nota equivalente, preferentemente hasta 24 meses.
+- reportCharts.classificationHistory: porcentajes por periodo de calificación SBS/Micro. Cada fila debe sumar aproximadamente 100 cuando el reporte lo permita. Claves NOR, CPP, DEF, DUD, PER.
+- reportCharts.overdueByType: deuda vencida por periodo separando SBS/Micro ("sbs") y otros/documentos impagos ("other").
+- reportCharts.overdueShare: distribución porcentual o proporcional de vencidos por tipo. Usa los valores reales subyacentes; el frontend calcula porcentajes.
+- reportCharts.currentVsOverdue: deuda SBS/Micro vigente ("current") y vencida ("overdue") por periodo.
+- reportCharts.institutionShare: saldo o participación por institución SBS/Micro. Usa montos o porcentajes reales, pero no mezcles ambos en la misma serie.
+- Si el propio reporte incluye una sección "Gráficos", "Posición Histórica", "Semáforos de los últimos 24 meses" o tablas históricas, prioriza esos datos para reportCharts.
+- Mantén el orden cronológico original del reporte de antiguo a reciente.
+- Para score: si el reporte contiene explícitamente un Score Experian u otro score de 1 a 999 del titular, usa ese valor. Solo si no existe un score explícito puedes usar una estimación educativa, y debe quedar indicado en scoreDescription.
 
 ARCHIVO: ${filename}
+MÉTODO DE EXTRACCIÓN: ${extractionMeta.mode||'digital'}
+PÁGINAS TOTALES: ${extractionMeta.totalPages||'no informado'}
+PÁGINAS DIGITALES: ${extractionMeta.digitalPages||0}
+PÁGINAS LEÍDAS VISUALMENTE: ${extractionMeta.visualPages||0}
 
 TEXTO EXTRAÍDO DEL REPORTE:
 ${text}`;
@@ -122,6 +144,8 @@ ${text}`;
   analysis.sourceReport=analysis.sourceReport||{};
   analysis.client=analysis.client||{};
   for(const k of ['alerts','metrics','debtSeries','debtComposition','monthlyBehavior','entities','obligations','inquiries','recommendations','checklist','reportSections'])if(!Array.isArray(analysis[k]))analysis[k]=[];
+  analysis.reportCharts=analysis.reportCharts&&typeof analysis.reportCharts==='object'?analysis.reportCharts:{};
+  for(const k of ['noteEvolution','classificationHistory','overdueByType','overdueShare','currentVsOverdue','institutionShare'])if(!Array.isArray(analysis.reportCharts[k]))analysis.reportCharts[k]=[];
   analysis.raw=analysis.raw&&typeof analysis.raw==='object'?analysis.raw:{};
   analysis.closing=analysis.closing||{headline:'Conclusión',text:''};
   return res.status(200).json({analysis});

@@ -48,7 +48,37 @@ const demo={
   {title:'Datos generales',items:[{label:'Titular',value:'Andres'},{label:'Edad',value:'43 años'},{label:'Fecha',value:'11/09/2026'}]},
   {title:'Sistema financiero',items:[{label:'Entidad',value:'BCP'},{label:'Saldo',value:'S/ 311'},{label:'Clasificación',value:'Normal'}]},
   {title:'Deuda comercial',items:[{label:'Total',value:'S/ 184.96'},{label:'Entidades',value:'Claro · Entel'}]}
- ]
+ ],
+ reportCharts:{
+  noteEvolution:[
+   {label:'Oct 24',value:4},{label:'Nov',value:4},{label:'Dic',value:4},{label:'Ene 25',value:0},
+   {label:'Feb',value:0},{label:'Mar',value:0},{label:'Abr',value:0},{label:'May',value:0},
+   {label:'Jun',value:0},{label:'Jul',value:0},{label:'Ago',value:0},{label:'Sep',value:3},
+   {label:'Oct',value:3},{label:'Nov',value:.3},{label:'Dic',value:.4},{label:'Ene 26',value:.6},
+   {label:'Feb',value:.3},{label:'Mar',value:.5},{label:'Abr',value:0},{label:'May',value:0},
+   {label:'Jun',value:0},{label:'Jul',value:.3},{label:'Ago',value:.45},{label:'Sep',value:.45}
+  ],
+  classificationHistory:[
+   {label:'Nov 25',NOR:100,CPP:0,DEF:0,DUD:0,PER:0},{label:'Dic',NOR:100,CPP:0,DEF:0,DUD:0,PER:0},
+   {label:'Ene 26',NOR:65,CPP:35,DEF:0,DUD:0,PER:0},{label:'Feb',NOR:100,CPP:0,DEF:0,DUD:0,PER:0},
+   {label:'Mar',NOR:85,CPP:0,DEF:15,DUD:0,PER:0},{label:'Abr',NOR:100,CPP:0,DEF:0,DUD:0,PER:0},
+   {label:'May',NOR:100,CPP:0,DEF:0,DUD:0,PER:0},{label:'Jun',NOR:100,CPP:0,DEF:0,DUD:0,PER:0},
+   {label:'Jul',NOR:100,CPP:0,DEF:0,DUD:0,PER:0},{label:'Ago',NOR:100,CPP:0,DEF:0,DUD:0,PER:0}
+  ],
+  overdueByType:[
+   {label:'Oct 24',sbs:0,other:210},{label:'Nov',sbs:0,other:210},{label:'Dic',sbs:0,other:210},
+   {label:'Sep 25',sbs:0,other:95},{label:'Oct',sbs:0,other:110},{label:'Nov',sbs:0,other:110},
+   {label:'Ene 26',sbs:340,other:120},{label:'Feb',sbs:260,other:100},{label:'Mar',sbs:520,other:0},
+   {label:'Ago',sbs:0,other:480},{label:'Sep',sbs:0,other:480}
+  ],
+  overdueShare:[{label:'Vencidos + SBS',value:36},{label:'Otros + Doc. impagos',value:64}],
+  currentVsOverdue:[
+   {label:'Dic 25',current:720,overdue:0},{label:'Ene 26',current:980,overdue:280},{label:'Feb',current:760,overdue:350},
+   {label:'Mar',current:3100,overdue:520},{label:'Abr',current:3300,overdue:0},{label:'May',current:190,overdue:0},
+   {label:'Jun',current:160,overdue:0},{label:'Ago',current:600,overdue:0},{label:'Sep',current:600,overdue:0}
+  ],
+  institutionShare:[{label:'Banco A',value:46},{label:'Financiera B',value:28},{label:'Banco C',value:16},{label:'Financiera D',value:10}]
+ }
 };
 
 async function bootstrap(){
@@ -92,6 +122,20 @@ function switchView(v){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.
 $('#newAnalysisBtn')?.addEventListener('click',resetAnalysis);$('#historyNewBtn')?.addEventListener('click',()=>{switchView('analysis');resetAnalysis()});
 function resetAnalysis(){switchView('analysis');state.analysis=null;$('#resultPanel').classList.add('hidden');$('#uploadPanel').classList.remove('hidden');$('#pdfInput').value='';$('#uploadState').classList.add('hidden')}
 $('#demoBtn')?.addEventListener('click',()=>loadAnalysis(structuredClone(demo),true));
+
+const sidebarCollapsed=localStorage.getItem('ts-sidebar-collapsed')==='1';
+document.body.classList.toggle('sidebar-collapsed',sidebarCollapsed);
+updateSidebarToggle();
+$('#sidebarToggle')?.addEventListener('click',()=>{
+ const next=!document.body.classList.contains('sidebar-collapsed');
+ document.body.classList.toggle('sidebar-collapsed',next);
+ localStorage.setItem('ts-sidebar-collapsed',next?'1':'0');
+ updateSidebarToggle();
+});
+function updateSidebarToggle(){
+ const b=$('#sidebarToggle');if(!b)return;
+ b.textContent=document.body.classList.contains('sidebar-collapsed')?'Mostrar menú':'Ocultar menú';
+}
 
 $('#pdfInput')?.addEventListener('change',e=>e.target.files[0]&&processPdf(e.target.files[0]));
 const dz=$('#dropZone');
@@ -243,7 +287,7 @@ function loadAnalysis(a,isDemo=false,filename=''){
  $('#alertsGrid').innerHTML=x.alerts.map(v=>'<div class="alert '+esc(v.level)+'"><div class="alert-top"><i class="alert-dot"></i><b>'+esc(v.title)+'</b></div><p>'+esc(v.text)+'</p></div>').join('')||'<div class="empty-line">Sin alertas identificadas.</div>';
  renderRecommendations(x.recommendations);$('#closingHeadline').textContent=x.closing.headline||'Conclusión';$('#closingText').textContent=x.closing.text||'Sin cierre disponible.';
  renderChecklist(x.checklist);renderData(x.raw);renderEntities(x.entities);renderObligations(x.obligations);renderInquiries(x.inquiries);renderSections(x.reportSections);
- renderMetrics(x.metrics);renderChart(x.debtSeries);renderComposition(x.debtComposition);renderMonthly(x.monthlyBehavior);renderCoverage(x);
+ renderMetrics(x.metrics);renderReportCharts(x);renderCoverage(x);
  $('#advisorNotes').value=x.notes||'';
  if(!isDemo)saveToHistory(filename);
 }
@@ -298,7 +342,10 @@ function normalize(a){
  x.metrics=Array.isArray(x.metrics)?x.metrics:[];x.debtSeries=Array.isArray(x.debtSeries)?x.debtSeries:[];x.debtComposition=Array.isArray(x.debtComposition)?x.debtComposition:[];
  x.monthlyBehavior=Array.isArray(x.monthlyBehavior)?x.monthlyBehavior:[];x.entities=Array.isArray(x.entities)?x.entities:[];x.obligations=Array.isArray(x.obligations)?x.obligations:[];
  x.inquiries=Array.isArray(x.inquiries)?x.inquiries:[];x.recommendations=Array.isArray(x.recommendations)?x.recommendations:[];x.checklist=Array.isArray(x.checklist)?x.checklist:[];
- x.raw=x.raw&&typeof x.raw==='object'?x.raw:{};x.reportSections=Array.isArray(x.reportSections)?x.reportSections:[];x.closing=x.closing||{};return x
+ x.raw=x.raw&&typeof x.raw==='object'?x.raw:{};x.reportSections=Array.isArray(x.reportSections)?x.reportSections:[];x.closing=x.closing||{};
+ x.reportCharts=x.reportCharts&&typeof x.reportCharts==='object'?x.reportCharts:{};
+ for(const k of ['noteEvolution','classificationHistory','overdueByType','overdueShare','currentVsOverdue','institutionShare'])if(!Array.isArray(x.reportCharts[k]))x.reportCharts[k]=[];
+ return x
 }
 function renderRecommendations(items){$('#recommendations').innerHTML=items.map((r,i)=>'<div class="rec"><div class="rec-num">'+(i+1)+'</div><div><h4>'+esc(r.title)+'</h4><p>'+esc(r.text)+'</p><span class="impact">'+esc(r.impact||'')+'</span></div></div>').join('')||'<div class="empty-line">Sin recomendaciones suficientes.</div>'}
 function renderChecklist(items){$('#checklist').innerHTML=items.map((t,i)=>'<label class="check"><input type="checkbox" data-i="'+i+'"><span>'+esc(t)+'</span></label>').join('');$$('#checklist input').forEach(v=>v.addEventListener('change',()=>{v.closest('.check').classList.toggle('done',v.checked);updateCheck()}));updateCheck()}
@@ -336,6 +383,100 @@ function renderChart(series){
 }
 function renderComposition(items){const vals=items.map(v=>Number(v.value)||0),total=vals.reduce((a,b)=>a+b,0)||1;$('#debtComposition').innerHTML=items.map((v,i)=>{const pct=Math.max(0,Math.min(100,vals[i]/total*100));return '<div class="composition-item"><div class="composition-top"><b>'+esc(v.label)+'</b><span>'+money(v.value)+' · '+pct.toFixed(0)+'%</span></div><div class="bar"><i style="width:'+pct+'%"></i></div></div>'}).join('')||'<div class="empty-line">Sin composición disponible.</div>'}
 function renderMonthly(items){$('#monthlyBehavior').innerHTML=items.map(v=>{const s=String(v.status||'').toLowerCase(),c=/normal|al día/.test(s)?'good':/mora|vencid|impag|pérdida/.test(s)?'bad':'warn',width=/normal|al día/.test(s)?100:/mora|vencid|impag|pérdida/.test(s)?35:65;return '<div class="month-row"><span>'+esc(v.period)+'</span><div class="month-track"><i class="'+c+'" style="width:'+width+'%"></i></div><b>'+esc(v.status||'—')+'</b></div>'}).join('')||'<div class="empty-line">Sin historial mensual estructurado.</div>'}
+
+function chartEmpty(svg,message='No disponible en este reporte'){
+ if(!svg)return;
+ svg.innerHTML='<text x="380" y="135" text-anchor="middle" class="sentinel-label">'+esc(message)+'</text>';
+}
+function gridLines(w,h,p,yTicks=4){
+ let out='';
+ for(let i=0;i<=yTicks;i++){const y=p+i*((h-p*2)/yTicks);out+='<line class="sentinel-grid" x1="'+p+'" x2="'+(w-p)+'" y1="'+y+'" y2="'+y+'"/>'}
+ out+='<line class="sentinel-axis" x1="'+p+'" x2="'+p+'" y1="'+p+'" y2="'+(h-p)+'"/>';
+ out+='<line class="sentinel-axis" x1="'+p+'" x2="'+(w-p)+'" y1="'+(h-p)+'" y2="'+(h-p)+'"/>';
+ return out;
+}
+function renderNoteEvolution(items){
+ const svg=$('#noteEvolutionChart');if(!svg)return;
+ if(!items.length){chartEmpty(svg);return}
+ const w=760,h=260,p=34,vals=items.map(v=>Number(v.value)||0),max=Math.max(4,Math.ceil(Math.max(...vals)));
+ const pts=items.map((v,i)=>({x:p+i*((w-p*2)/(items.length-1||1)),y:h-p-(Number(v.value)||0)/max*(h-p*2),...v}));
+ const line=pts.map((q,i)=>(i?'L':'M')+q.x+' '+q.y).join(' ');
+ let labels='';
+ const step=Math.max(1,Math.ceil(items.length/9));
+ pts.forEach((q,i)=>{if(i%step===0||i===pts.length-1)labels+='<text class="sentinel-label" x="'+q.x+'" y="'+(h-9)+'" text-anchor="middle">'+esc(q.label)+'</text>'});
+ svg.innerHTML=gridLines(w,h,p,4)+'<path class="note-line" d="'+line+'"/>'+pts.map(q=>'<circle class="note-point" cx="'+q.x+'" cy="'+q.y+'" r="4"/>').join('')+labels;
+}
+function renderClassification(items){
+ const svg=$('#classificationChart'),leg=$('#classificationLegend');if(!svg)return;
+ const cats=[['NOR','class-nor'],['CPP','class-cpp'],['DEF','class-def'],['DUD','class-dud'],['PER','class-per']];
+ leg.innerHTML=cats.map(c=>'<span><i class="legend-'+c[0].toLowerCase()+'"></i>'+c[0]+'</span>').join('');
+ if(!items.length){chartEmpty(svg);return}
+ const w=760,h=280,p=36,plotH=h-p*2,bw=Math.max(7,Math.min(28,(w-p*2)/items.length*.58)),step=(w-p*2)/(items.length||1);
+ let bars=gridLines(w,h,p,4),labels='';
+ items.forEach((v,i)=>{
+  const x=p+i*step+(step-bw)/2;let y=h-p;
+  for(const [key,cls] of cats){const val=Math.max(0,Number(v[key])||0);const bh=val/100*plotH;if(bh>0){y-=bh;bars+='<rect class="'+cls+'" x="'+x+'" y="'+y+'" width="'+bw+'" height="'+bh+'"/>'}}
+  if(i%Math.max(1,Math.ceil(items.length/9))===0||i===items.length-1)labels+='<text class="sentinel-label" x="'+(x+bw/2)+'" y="'+(h-8)+'" text-anchor="middle">'+esc(v.label)+'</text>';
+ });
+ svg.innerHTML=bars+labels;
+}
+function renderOverdueType(items){
+ const svg=$('#overdueTypeChart');if(!svg)return;
+ if(!items.length){chartEmpty(svg);return}
+ const w=760,h=280,p=36,max=Math.max(1,...items.flatMap(v=>[Number(v.sbs)||0,Number(v.other)||0])),step=(w-p*2)/items.length,bw=Math.max(6,Math.min(18,step*.28));
+ let out=gridLines(w,h,p,4),labels='';
+ items.forEach((v,i)=>{
+  const x=p+i*step+step/2;const a=(Number(v.sbs)||0)/max*(h-p*2),b=(Number(v.other)||0)/max*(h-p*2);
+  out+='<rect class="bar-cyan" x="'+(x-bw-1)+'" y="'+(h-p-a)+'" width="'+bw+'" height="'+a+'"/>';
+  out+='<rect class="bar-purple" x="'+(x+1)+'" y="'+(h-p-b)+'" width="'+bw+'" height="'+b+'"/>';
+  if(i%Math.max(1,Math.ceil(items.length/9))===0||i===items.length-1)labels+='<text class="sentinel-label" x="'+x+'" y="'+(h-8)+'" text-anchor="middle">'+esc(v.label)+'</text>';
+ });
+ svg.innerHTML=out+labels;
+}
+function renderCurrentVsOverdue(items){
+ const svg=$('#currentVsOverdueChart');if(!svg)return;
+ if(!items.length){chartEmpty(svg);return}
+ const w=760,h=280,p=36,max=Math.max(1,...items.map(v=>(Number(v.current)||0)+(Number(v.overdue)||0))),step=(w-p*2)/items.length,bw=Math.max(8,Math.min(25,step*.52));
+ let out=gridLines(w,h,p,4),labels='';
+ items.forEach((v,i)=>{
+  const x=p+i*step+(step-bw)/2,cur=(Number(v.current)||0)/max*(h-p*2),ov=(Number(v.overdue)||0)/max*(h-p*2);
+  out+='<rect class="bar-blue" x="'+x+'" y="'+(h-p-cur)+'" width="'+bw+'" height="'+cur+'"/>';
+  out+='<rect class="bar-coral" x="'+x+'" y="'+(h-p-cur-ov)+'" width="'+bw+'" height="'+ov+'"/>';
+  if(i%Math.max(1,Math.ceil(items.length/9))===0||i===items.length-1)labels+='<text class="sentinel-label" x="'+(x+bw/2)+'" y="'+(h-8)+'" text-anchor="middle">'+esc(v.label)+'</text>';
+ });
+ svg.innerHTML=out+labels;
+}
+function renderPieChart(target,items,palette){
+ const box=$(target);if(!box)return;
+ if(!items.length){box.innerHTML='<div class="chart-empty">No disponible en este reporte</div>';return}
+ const vals=items.map(v=>Math.max(0,Number(v.value)||0)),total=vals.reduce((a,b)=>a+b,0);
+ if(total<=0){box.innerHTML='<div class="chart-empty">No disponible en este reporte</div>';return}
+ let acc=0,stops=[];
+ vals.forEach((v,i)=>{const a=acc/total*100;acc+=v;const b=acc/total*100;stops.push((palette[i%palette.length])+' '+a.toFixed(2)+'% '+b.toFixed(2)+'%')});
+ const legend=items.map((v,i)=>'<div class="pie-legend-row"><i style="background:'+palette[i%palette.length]+'"></i><span>'+esc(v.label)+'</span><b>'+((Number(v.value)||0)/total*100).toFixed(1)+'%</b></div>').join('');
+ box.innerHTML='<div class="pie-visual" style="background:conic-gradient('+stops.join(',')+')"><div class="pie-total"><b>'+items.length+'</b><small>grupos</small></div></div><div class="pie-legend">'+legend+'</div>';
+}
+function fallbackCharts(x){
+ const comp=x.debtComposition||[],monthly=x.monthlyBehavior||[],series=x.debtSeries||[];
+ return {
+  noteEvolution:series.map((v,i)=>({label:v.label,value:Math.min(4,Math.max(0,(Number(v.value)||0)/(Math.max(...series.map(q=>Number(q.value)||0),1))*4))})),
+  classificationHistory:monthly.map(v=>({label:v.period,NOR:/normal|al día/i.test(v.status||'')?100:0,CPP:/cpp|potencial/i.test(v.status||'')?100:0,DEF:/deficiente/i.test(v.status||'')?100:0,DUD:/dudoso/i.test(v.status||'')?100:0,PER:/pérdida|perdida/i.test(v.status||'')?100:0})),
+  overdueByType:[],
+  overdueShare:[],
+  currentVsOverdue:series.map(v=>({label:v.label,current:Number(v.value)||0,overdue:0})),
+  institutionShare:comp
+ };
+}
+function renderReportCharts(x){
+ const rc=x.reportCharts||{},fb=fallbackCharts(x);
+ const use=(k)=>Array.isArray(rc[k])&&rc[k].length?rc[k]:fb[k];
+ renderNoteEvolution(use('noteEvolution'));
+ renderClassification(use('classificationHistory'));
+ renderOverdueType(use('overdueByType'));
+ renderPieChart('#overdueShareChart',use('overdueShare'),['#64d2dc','#9a55dc','#f0a04b','#59bd67']);
+ renderCurrentVsOverdue(use('currentVsOverdue'));
+ renderPieChart('#institutionShareChart',use('institutionShare'),['#5f93ba','#65c856','#f3d94f','#efa04b','#9a55dc','#64d2dc']);
+}
 function renderCoverage(x){const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;$('#coverageBox').innerHTML='<div class="coverage-item"><span>Fuente detectada</span><b>'+esc(s.provider||'No identificada')+'</b></div><div class="coverage-item"><span>Tipo de reporte</span><b>'+esc(s.type||'No identificado')+'</b></div><div class="coverage-item"><span>Método de lectura</span><b>'+esc(s.extractionMode||'Texto digital')+'</b></div><div class="coverage-item"><span>Páginas del reporte</span><b>'+esc(s.totalPages||'No informado')+'</b></div><div class="coverage-item"><span>Páginas leídas visualmente</span><b>'+esc(s.visualPages||0)+'</b></div><div class="coverage-item"><span>Periodo cubierto</span><b>'+esc(s.periodCovered||'No informado')+'</b></div><div class="coverage-item"><span>Secciones estructuradas</span><b>'+det+(exp?' / '+exp:'')+'</b></div><div class="coverage-item"><span>Confianza de extracción</span><b>'+esc(x.confidence||0)+'%</b></div>'}
 
 $('#copyActionsBtn')?.addEventListener('click',async()=>{if(!state.analysis)return;const t=state.analysis.recommendations.map((r,i)=>(i+1)+'. '+r.title+'\n'+r.text).join('\n\n');await navigator.clipboard.writeText(t);$('#copyActionsBtn').textContent='Copiado';setTimeout(()=>$('#copyActionsBtn').textContent='Copiar',1200)});

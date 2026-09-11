@@ -290,3 +290,150 @@ body.client-mode .sidebar{display:none}body.client-mode .main{margin-left:0}body
     grid-column:auto;
   }
 }
+
+
+/* ===== Ajuste mesa TikTok: centro más estrecho + menú colapsable ===== */
+@media(min-width:981px){
+  .analysis-columns{
+    grid-template-columns:minmax(300px,1fr) minmax(410px,455px) minmax(360px,1.12fr);
+  }
+  body.sidebar-collapsed .sidebar{display:none}
+  body.sidebar-collapsed .main{margin-left:0}
+  body.sidebar-collapsed .analysis-columns{
+    grid-template-columns:minmax(340px,1fr) minmax(410px,455px) minmax(420px,1.15fr);
+  }
+}
+#sidebarToggle{
+  min-width:108px;
+}
+.pane-client{
+  max-width:455px;
+  width:100%;
+  justify-self:center;
+}
+.analysis-columns{
+  background:#f3f1eb;
+}
+.pane-client{
+  border-left:1px solid rgba(185,133,36,.22);
+  border-right:1px solid rgba(185,133,36,.22);
+}
+
+/* ===== Gráficos inspirados en el reporte Sentinel ===== */
+.sentinel-chart-block{
+  background:#fff!important;
+}
+.sentinel-chart-block .block-heading{
+  margin-bottom:9px;
+}
+.sentinel-chart{
+  height:220px;
+  padding:8px 8px 4px;
+  background:#fff;
+  border:1px solid #e2ded5;
+  border-radius:6px;
+}
+.sentinel-axis{stroke:#bfc3c7;stroke-width:1}
+.sentinel-grid{stroke:#e6e8e9;stroke-width:1}
+.sentinel-label{fill:#69717a;font-size:17px}
+.sentinel-value{fill:#344054;font-size:17px;font-weight:700}
+.note-line{fill:none;stroke:#6e93b3;stroke-width:3;vector-effect:non-scaling-stroke}
+.note-point{fill:#6e93b3;stroke:#fff;stroke-width:1.5;vector-effect:non-scaling-stroke}
+.class-nor{fill:#59bd67}
+.class-cpp{fill:#f0e84f}
+.class-def{fill:#f0a04b}
+.class-dud{fill:#f1726e}
+.class-per{fill:#b8b8b8}
+.bar-cyan{fill:#64d2dc}
+.bar-purple{fill:#9a55dc}
+.bar-blue{fill:#5f93ba}
+.bar-coral{fill:#e97869}
+.sentinel-legend{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 12px;
+  margin-top:7px;
+  font-size:.58rem;
+  color:var(--muted);
+}
+.sentinel-legend span{display:inline-flex;align-items:center;gap:5px}
+.sentinel-legend i{
+  width:15px;height:7px;border-radius:2px;display:inline-block
+}
+.legend-nor{background:#59bd67}.legend-cpp{background:#f0e84f}.legend-def{background:#f0a04b}
+.legend-dud{background:#f1726e}.legend-per{background:#b8b8b8}
+.legend-cyan{background:#64d2dc}.legend-purple{background:#9a55dc}
+.legend-blue{background:#5f93ba}.legend-coral{background:#e97869}
+
+.pie-chart-card{
+  min-height:205px;
+  display:grid;
+  grid-template-columns:150px 1fr;
+  align-items:center;
+  gap:14px;
+  padding:12px;
+  background:#fff;
+  border:1px solid #e2ded5;
+  border-radius:6px;
+}
+.pie-visual{
+  width:138px;height:138px;border-radius:50%;
+  position:relative;
+  margin:auto;
+  box-shadow:inset 0 0 0 1px rgba(11,18,32,.08)
+}
+.pie-visual:after{
+  content:"";
+  position:absolute;
+  inset:42px;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 0 0 1px rgba(11,18,32,.06)
+}
+.pie-total{
+  position:absolute;
+  inset:0;
+  z-index:2;
+  display:grid;
+  place-items:center;
+  align-content:center;
+  pointer-events:none;
+}
+.pie-total b{font-size:.86rem;color:var(--ink)}
+.pie-total small{font-size:.5rem;color:var(--muted)}
+.pie-legend{display:grid;gap:7px}
+.pie-legend-row{
+  display:grid;
+  grid-template-columns:9px 1fr auto;
+  gap:7px;
+  align-items:center;
+  font-size:.61rem;
+}
+.pie-legend-row i{width:9px;height:9px;border-radius:2px}
+.pie-legend-row span{color:#525b66;min-width:0}
+.pie-legend-row b{color:var(--ink);font-size:.62rem}
+.chart-empty{
+  height:100%;
+  min-height:160px;
+  display:grid;
+  place-items:center;
+  color:#8b918d;
+  font-size:.68rem;
+  text-align:center;
+  padding:20px;
+}
+
+@media(max-width:1300px) and (min-width:981px){
+  .analysis-columns{
+    grid-template-columns:minmax(260px,.9fr) minmax(390px,430px) minmax(320px,1fr);
+  }
+  .pane-client{max-width:430px}
+  body.sidebar-collapsed .analysis-columns{
+    grid-template-columns:minmax(300px,1fr) minmax(390px,430px) minmax(360px,1.1fr);
+  }
+}
+@media(max-width:600px){
+  .pane-client{max-width:none}
+  .pie-chart-card{grid-template-columns:1fr}
+  .pie-visual{width:126px;height:126px}
+}

@@ -54,6 +54,7 @@
           <h1>Centro de análisis</h1>
         </div>
         <div class="top-actions">
+          <button id="sidebarToggle" class="btn ghost admin-only">Ocultar menú</button>
           <button id="demoBtn" class="btn ghost admin-only">Demo</button>
           <button id="newAnalysisBtn" class="btn primary admin-only">+ Nuevo análisis</button>
         </div>
@@ -199,20 +200,37 @@
                   <div id="metricsGrid" class="metrics-grid"></div>
                 </section>
 
-                <section class="pane-block">
-                  <div class="block-heading"><span>Evolución de deuda</span></div>
-                  <div class="chart-wrap"><svg id="debtChart" viewBox="0 0 900 280" preserveAspectRatio="none"></svg></div>
-                  <div id="chartLegend" class="chart-legend"></div>
+                <section class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Evolución de Nota</span></div>
+                  <div class="chart-wrap sentinel-chart"><svg id="noteEvolutionChart" viewBox="0 0 760 260" preserveAspectRatio="none"></svg></div>
                 </section>
 
-                <section class="pane-block">
-                  <div class="block-heading"><span>Composición de deuda</span></div>
-                  <div id="debtComposition" class="composition-list"></div>
+                <section class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>% Calificación SBS/Micro · últimos 24 meses</span></div>
+                  <div class="chart-wrap sentinel-chart"><svg id="classificationChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
+                  <div id="classificationLegend" class="sentinel-legend"></div>
                 </section>
 
-                <section class="pane-block">
-                  <div class="block-heading"><span>Comportamiento mensual</span></div>
-                  <div id="monthlyBehavior" class="monthly-grid"></div>
+                <section class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Endeudamiento vencido total por tipo</span></div>
+                  <div class="chart-wrap sentinel-chart"><svg id="overdueTypeChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
+                  <div class="sentinel-legend"><span><i class="legend-cyan"></i>Vencidos + SBS</span><span><i class="legend-purple"></i>Otros + Doc. impagos</span></div>
+                </section>
+
+                <section class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Vencidos en los últimos 24 meses · por tipo (%)</span></div>
+                  <div id="overdueShareChart" class="pie-chart-card"></div>
+                </section>
+
+                <section class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Deuda vigente y vencida SBS/Micro</span></div>
+                  <div class="chart-wrap sentinel-chart"><svg id="currentVsOverdueChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
+                  <div class="sentinel-legend"><span><i class="legend-blue"></i>Vigente SBS</span><span><i class="legend-coral"></i>Vencido SBS</span></div>
+                </section>
+
+                <section class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Endeudamiento SBS/Micro por institución (%)</span></div>
+                  <div id="institutionShareChart" class="pie-chart-card"></div>
                 </section>
 
                 <section class="pane-block admin-only">
