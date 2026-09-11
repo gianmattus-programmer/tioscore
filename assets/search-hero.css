@@ -1,0 +1,49 @@
+/* A lighter introduction using the original favicon. */
+#inicio.hero{min-height:100vh;min-height:100svh;padding:64px 32px 32px}
+#inicio .hero-shell{grid-template-columns:minmax(0,1.35fr) minmax(210px,.65fr);gap:40px;width:min(1100px,100%)}
+#inicio .hero-copy{min-width:0;max-width:680px}
+#inicio h1{font-size:clamp(36px,3.6vw,62px);line-height:1.1;letter-spacing:-.035em;margin:0 0 24px}
+#inicio h1 span{margin-top:10px;display:block}
+#inicio .hero-copy>p{font-size:clamp(16px,1.45vw,19px);line-height:1.8;max-width:550px}
+#inicio .hero-badge{font-size:10px;letter-spacing:.12em;padding:9px 14px;margin-bottom:25px}
+#inicio .hero-actions{gap:10px;flex-wrap:wrap;margin-top:28px}
+#inicio .hero-btn{font-size:13px;min-height:46px;padding:13px 18px}
+#inicio .hero-trust{gap:12px;margin-top:24px;font-size:11px;flex-wrap:wrap}
+.hero-visual{position:relative;isolation:isolate;display:flex;flex-direction:column;align-items:center;justify-content:center;justify-self:center;width:100%;max-width:340px;padding:20px 0}
+.hero-visual-glow{position:absolute;inset:8% -5% 18%;background:radial-gradient(ellipse,#b9f1ce80,transparent 70%);z-index:-1}
+.hero-visual img{display:block;width:100%;height:auto;max-width:310px;filter:drop-shadow(0 14px 18px #087f4718)}
+.hero-visual-caption{text-align:center;margin-top:20px;color:#153f2a}
+.hero-visual-caption strong{display:block;font:800 20px Arial,sans-serif;letter-spacing:.08em}
+.hero-visual-caption span{display:block;margin-top:8px;font:13px/1.5 Arial,sans-serif;color:var(--muted)}
+#inicio .scroll-cta{margin-top:38px;font-size:10px}
+.faq-search-wrap{max-width:720px;margin-bottom:12px}
+.faq-search-help{max-width:720px;margin:0 auto 24px}
+.faq-search-help p{color:var(--muted);font:14px/1.6 Arial,sans-serif;margin-bottom:12px}
+
+
+
+.faq-suggestions{max-width:720px;margin:0 auto 28px;background:#edf7f0;border:1px solid #c8e3d1;border-radius:14px;padding:18px}
+.faq-suggestions>p{font:700 12px Arial,sans-serif;color:#087f47;margin-bottom:10px}
+#faqSuggestionLinks{display:flex;flex-direction:column;gap:8px}
+#faqSuggestionLinks button{display:block;text-align:left;width:100%;border:0;border-radius:8px;background:#fff;padding:13px 15px;color:#153f2a;font:600 14px/1.5 Arial,sans-serif;cursor:pointer}
+#faqSuggestionLinks button::after{content:' →';color:#087f47}
+#faqSuggestionLinks button:hover{box-shadow:0 0 0 1px #087f47}
+.faq-empty{max-width:720px;margin:20px auto;background:#fff;border:1px solid #e0e5e2;border-radius:14px;padding:24px;color:#30463a;font:14px/1.7 Arial,sans-serif}
+.faq-empty button{padding:10px 14px;margin-top:12px;border:0;border-radius:8px;background:#087f47;color:#fff;cursor:pointer}
+#faq .faq-suggestions[hidden],#faq .faq-empty[hidden]{display:none}
+#faq button:focus-visible{outline:3px solid #b98524;outline-offset:3px}
+@media(max-width:800px){
+ #inicio.hero{min-height:100vh;min-height:100svh;padding:36px 22px 28px}
+ #inicio .hero-shell{grid-template-columns:minmax(0,1fr);gap:28px;text-align:center}
+ #inicio .hero-copy{max-width:620px;justify-self:center}
+ #inicio .hero-copy>p{margin-inline:auto}
+ #inicio h1{font-size:clamp(34px,7vw,48px)}
+ #inicio .hero-actions,#inicio .hero-trust{justify-content:center}
+ .hero-visual{max-width:150px;order:-1;padding:0}
+ .hero-visual-caption{display:none}
+ #inicio .hero-badge{font-size:9px;letter-spacing:.06em}
+ .faq-search{font-size:16px;padding-right:12px}
+ 
+}
+@media(min-width:801px) and (max-width:1350px){#inicio .hero-shell{grid-template-columns:minmax(0,1fr) 220px;gap:24px}#inicio h1{font-size:clamp(34px,3.5vw,46px)}}
+

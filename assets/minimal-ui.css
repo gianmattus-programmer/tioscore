@@ -1,0 +1,324 @@
+/* Tío Score — capa visual minimalista
+   Reduce efectos decorativos, unifica radios, bordes y jerarquías sin alterar funcionalidad. */
+:root{
+  --paper:#ffffff;
+  --cream:#f6f5f1;
+  --ink:#0d1511;
+  --text:#1f2a24;
+  --muted:#69736d;
+  --gold:#ad7b20;
+  --gold-light:#c99a43;
+  --green:#0a7a45;
+  --green-light:#18a85e;
+  --brand-green:#0a8c4e;
+  --brand-green-dark:#086b3d;
+  --shadow-sm:0 1px 2px rgba(13,21,17,.04);
+  --shadow-md:0 10px 28px rgba(13,21,17,.07);
+  --radius:10px;
+}
+
+html{background:#fff}
+body{background:#fff;color:var(--text);letter-spacing:0}
+
+/* Menos “efecto plantilla”: movimiento solo cuando aporta feedback. */
+.fade-in{opacity:1;transform:none;transition:none}
+.hero-badge,.hero h1,.hero p,.scroll-cta{animation:none!important}
+.concept-card,.light-item,.timeline-item,.factor-card,.alt-item,.hero-btn,.dialog-btn,.dialog-close-btn,
+.ts-wa-trigger,.ts-wa-action,.ts-wa-option,.ts-wa-preset{transform:none!important}
+
+/* Inicio editorial, sin gradientes, brillos ni retícula decorativa. */
+#inicio.hero{
+  background:#fff!important;
+  min-height:100vh;min-height:100svh;
+  padding-top:64px;
+  border-bottom:1px solid #ecefeb;
+}
+#inicio.hero::before,#inicio.hero::after,.hero-visual-glow{display:none!important}
+#inicio .hero-shell{width:min(1120px,100%);gap:64px}
+#inicio .hero-copy{max-width:660px}
+#inicio .hero-badge{
+  display:inline-block;background:transparent!important;border:0!important;border-radius:0!important;
+  padding:0!important;margin-bottom:22px!important;color:var(--brand-green-dark)!important;
+  font-size:10px!important;letter-spacing:.14em!important;font-weight:700;
+}
+#inicio h1{font-size:clamp(40px,4.1vw,64px);line-height:1.04;letter-spacing:-.045em!important;margin-bottom:22px}
+#inicio h1 span{margin-top:6px}
+#inicio .hero-copy>p{max-width:590px;font-size:17px;line-height:1.75;color:#68746e}
+#inicio .hero-actions{margin-top:28px;gap:9px}
+#inicio .hero-btn{
+  min-height:44px;border-radius:8px!important;padding:11px 17px!important;
+  box-shadow:none!important;font-size:12px!important;letter-spacing:0!important;
+}
+#inicio .hero-btn.hero-btn-alt{box-shadow:none!important;background:#fff!important;border:1px solid #dfe4e0!important}
+#inicio .hero-btn:hover{box-shadow:none!important}
+#inicio .hero-trust{margin-top:22px;gap:10px 18px;font-size:10px;color:#7a847f}
+#inicio .hero-trust .icon{width:13px;height:13px}
+.hero-visual{max-width:300px;padding:0}
+.hero-visual img{max-width:280px;filter:none!important}
+.hero-visual-caption{margin-top:14px}
+.hero-visual-caption strong{font-size:17px;letter-spacing:.07em}
+.hero-visual-caption span{margin-top:5px;font-size:12px}
+#inicio .scroll-cta{margin-top:18px;gap:8px}
+#inicio .scroll-cta span{font-size:9px;letter-spacing:.14em;color:#8a938e}
+.arrow-bounce{width:18px;height:18px;border-width:1px;animation:none!important}
+
+/* Navegación: plana, precisa, sin glassmorphism. */
+.top-nav,nav{
+  background:rgba(255,255,255,.98)!important;backdrop-filter:none!important;
+  box-shadow:none!important;border-bottom:1px solid #e7ebe8!important;
+}
+.nav-links a{border-radius:6px!important}
+.nav-links a:hover{background:#f2f6f3!important}
+.nav-menu-btn{border-radius:7px!important;box-shadow:none!important}
+
+/* Secciones: más aire, menos bloques decorativos. */
+.section{max-width:1080px;padding-top:88px;padding-bottom:88px}
+.section-label{font-size:10px;letter-spacing:.16em;color:var(--brand-green-dark)}
+.section-title{font-size:clamp(31px,4vw,48px);line-height:1.08;letter-spacing:-.04em!important;max-width:820px}
+.divider{width:36px;height:1px;background:#c8a76a;margin-bottom:36px}
+.subchapter{margin-bottom:64px}
+.subchapter-divider{margin-bottom:56px;background:#e3e7e4}
+.subchapter-dark{
+  background:#fff!important;border:1px solid #e2e7e3!important;border-radius:10px!important;
+  box-shadow:none!important;padding:44px 36px!important;
+}
+.subchapter-label{letter-spacing:.12em}
+.subchapter-title{letter-spacing:-.035em!important}
+
+/* Tarjetas: borde fino, sombra casi nula, sin elevaciones automáticas. */
+.concept-card,.factor-card,.central-card,.light-item,.timeline-content,.report-preview,.report-summary>div,
+.report-zone,.report-points article,.official-card,.live-panel,.faq-item,.material-callout,.privacy-banner,
+.reinsercion-pregunta,.reinsercion-realidad,.calc-result,.calc-alert,.alt-item{
+  border-radius:9px!important;box-shadow:none!important;
+}
+.concept-card,.factor-card,.light-item,.timeline-content,.report-preview,.report-summary>div,.report-zone,
+.report-points article,.faq-item,.live-panel{border-color:#e1e6e2!important}
+.concept-card:hover,.factor-card:hover,.light-item:hover,.faq-item:hover,.alt-item:hover{
+  transform:none!important;box-shadow:none!important;border-color:#bcc9c1!important;
+}
+.concept-card::before{display:none!important}
+.concept-num,.factor-num{opacity:.08!important}
+.concept-icon,.factor-icon,.official-card-icon,.faq-q-icon,.ts-wa-choice-icon{
+  border-radius:7px!important;box-shadow:none!important;
+}
+
+/* Semáforo: elimina glow y desplazamientos laterales. */
+.light-dot{box-shadow:none!important}
+.light-item:hover{transform:none!important}
+.light-badge{border-radius:5px!important}
+
+/* Timeline más sobrio. */
+.timeline::before{background:#d8ded9!important;width:1px!important}
+.timeline-dot{box-shadow:none!important;border-width:1px!important;background:#fff!important;color:var(--brand-green-dark)!important}
+.timeline-content{background:#fff!important}
+
+/* Calculadora y formularios: controles neutros. */
+.calc-input{background:#fff!important;border:1px solid #dce3de!important;border-radius:7px!important;color:var(--ink)!important;box-shadow:none!important}
+.calc-input:focus{background:#fff!important;border-color:#759b84!important;box-shadow:0 0 0 3px rgba(8,107,61,.08)!important}
+.calc-result{background:#f7faf8!important;border:1px solid #e0e7e2!important}
+.calc-alert{box-shadow:none!important}
+
+/* Reinserción: conserva contraste, reduce ornamentación. */
+#reinsercion{background:#f8faf8!important}
+#reinsercion .reinsercion-progress{border-radius:9px!important;box-shadow:none!important}
+#reinsercion .prog-circle{box-shadow:none!important}
+.factor-caso{border-radius:6px!important}
+
+/* Reporte: interfaz documental, no “dashboard” genérico. */
+.report-section{background:#fff!important}
+.report-preview{background:#fafbfa!important;padding:20px!important}
+.demo-badge{border-radius:5px!important;background:#eef4f0!important}
+.report-summary>div,.report-zone{border-radius:7px!important}
+.zone-num{border-radius:5px!important}
+.report-points{gap:10px!important}
+.report-points article{border-radius:8px!important;padding:15px 16px!important}
+.material-callout,.privacy-banner{border-radius:8px!important}
+
+/* Live: una composición limpia y estable. */
+.live-section{background:#f7f8f6!important}
+.live-panel{background:#fff!important;padding:40px!important}
+.live-price-card{border-radius:9px!important;background:#0a7543!important;box-shadow:none!important}
+.live-status{border-radius:6px!important}
+
+/* FAQ: sin tarjetas flotantes ni chips redondeados de más. */
+#faq{background:#fff!important}
+.faq-search{border-radius:8px!important;box-shadow:none!important;background:#fff!important}
+.faq-cat-btn{border-radius:6px!important}
+.faq-item{background:#fff!important}
+.faq-question:hover{background:#fafbfa!important}
+.faq-suggestions,.faq-empty{border-radius:8px!important;box-shadow:none!important}
+#faqSuggestionLinks button{border-radius:6px!important}
+
+/* Dialog/menu coherente con el resto. */
+#navDialog,.dialog-inner{border-radius:10px!important;box-shadow:none!important}
+.dialog-btn{border-radius:8px!important;box-shadow:none!important}
+.dialog-btn-icon{border-radius:7px!important}
+.dialog-close-btn{border-radius:7px!important}
+
+/* Guía del reporte: radios y selección más discretos. */
+.rg-notice,.rg-document,.rg-step,.rg-download,.rg-pages button,.rg-toolbar button,.rg-toolbar a,.rg-pagination button{
+  border-radius:7px!important;box-shadow:none!important;
+}
+.rg-document{background:#f4f6f5!important}
+.rg-step[aria-pressed="true"]{background:#fff7f3!important}
+.rg-detail{border-radius:0 7px 7px 0!important}
+
+/* WhatsApp: mantiene el difuminado pedido, pero la ventana es sobria. */
+.ts-wa-trigger{border-radius:9px!important;box-shadow:none!important;background:#fff!important}
+.ts-wa-icon-wrap{border-radius:7px!important}
+.ts-wa-panel{border-radius:10px!important;box-shadow:0 18px 52px rgba(13,21,17,.14)!important}
+.ts-wa-panel-head{padding:16px 18px!important}
+.ts-wa-panel-logo,.ts-wa-close{border-radius:7px!important}
+.ts-wa-option,.ts-wa-preset,.ts-wa-preview,.ts-wa-action{border-radius:7px!important}
+.ts-wa-option:hover,.ts-wa-option.is-selected,.ts-wa-preset:hover,.ts-wa-preset.is-selected{box-shadow:none!important}
+.ts-wa-backdrop{background:rgba(12,18,15,.23)!important;backdrop-filter:blur(8px)!important}
+
+/* Sidebar desktop: casi monocroma; el verde solo indica estado. */
+@media(min-width:1100px){
+  .ts-sidebar{background:#0c110f!important;border-right-color:#202823!important;scrollbar-width:none}
+  .ts-sidebar::-webkit-scrollbar{display:none}
+  .ts-side-brand{padding-bottom:20px;margin-bottom:10px}
+  .ts-side-brand img{width:64px;height:64px}
+  .ts-side-nav li{border-bottom-color:#1f2822}
+  .ts-side-nav a{min-height:48px;background:transparent!important;border-left-width:1px;padding-left:10px}
+  .ts-side-nav a:hover{background:#111814!important}
+  .ts-side-nav a[aria-current="location"]{background:#121b16!important;border-left-color:#21b46c!important}
+  .ts-side-resources{padding-top:19px}
+  .ts-side-resources a,.ts-side-cta{border-radius:6px!important;background:transparent!important}
+  .ts-side-monogram{border-radius:6px!important}
+}
+
+/* Mobile: menos efecto “app”, más documento/web editorial. */
+@media(max-width:800px){
+  #inicio.hero{padding-top:34px;padding-bottom:28px}
+  #inicio .hero-shell{gap:22px}
+  .hero-visual{max-width:132px}
+  #inicio h1{font-size:clamp(34px,9vw,45px);line-height:1.07}
+  #inicio .hero-copy>p{font-size:15px;line-height:1.7}
+  #inicio .hero-actions{gap:8px}
+  #inicio .hero-btn{min-height:44px!important;border-radius:7px!important}
+  .section{padding-top:64px;padding-bottom:64px}
+  .section-title{font-size:clamp(29px,8vw,39px)}
+  .subchapter-dark{padding:30px 20px!important}
+  .live-panel{padding:26px 20px!important}
+}
+
+@media(max-width:390px){
+  .section{padding-left:17px!important;padding-right:17px!important}
+  #inicio.hero{padding-left:17px!important;padding-right:17px!important}
+  #inicio h1{font-size:clamp(32px,9.5vw,40px)}
+}
+
+/* Corrige la navegación lateral para que la regla global de nav no la convierta en un bloque blanco. */
+@media(min-width:1100px){
+  .ts-sidebar nav.ts-side-nav{
+    background:transparent!important;
+    border:0!important;
+    box-shadow:none!important;
+    backdrop-filter:none!important;
+  }
+}
+
+@media(max-width:767px){
+  .ts-wa-panel{border-radius:10px 10px 0 0!important;left:0!important;right:0!important;top:auto!important;bottom:0!important;max-height:88dvh!important;border-bottom:0!important}
+  .ts-wa-trigger{border-radius:10px!important}
+}
+
+/* Ajustes de presentación solicitados: hero con mayor presencia y WhatsApp sin recortes. */
+@media(min-width:768px){
+  .ts-wa-trigger{
+    min-width:268px;
+    max-width:calc(100vw - 48px);
+    padding:8px 16px 8px 8px!important;
+    overflow:visible!important;
+    white-space:nowrap;
+  }
+  .ts-wa-trigger-copy{
+    min-width:0;
+    overflow:visible;
+    padding-right:2px;
+  }
+  .ts-wa-trigger-copy strong{
+    font-size:12px;
+    line-height:1.35;
+    white-space:nowrap;
+  }
+  .ts-wa-trigger-copy small{
+    font-size:9.5px;
+    line-height:1.35;
+    white-space:nowrap;
+  }
+
+  #inicio .hero-shell{width:min(1180px,100%)}
+  #inicio .hero-copy{max-width:720px}
+  #inicio h1{
+    font-size:clamp(48px,5vw,78px);
+    line-height:1.01;
+    margin-bottom:24px;
+  }
+  #inicio .hero-copy>p{
+    max-width:650px;
+    font-size:18px;
+    line-height:1.7;
+  }
+  #inicio .hero-actions{margin-top:30px}
+  .hero-visual{max-width:390px;width:100%;justify-self:end}
+  .hero-visual img{width:100%;max-width:370px;height:auto}
+  .hero-visual-caption strong{font-size:19px}
+  .hero-visual-caption span{font-size:12.5px}
+}
+
+/* Desktop con sidebar: mantiene la ampliación sin forzar columnas estrechas. */
+@media(min-width:1100px) and (max-width:1350px){
+  #inicio .hero-shell{gap:30px}
+  #inicio h1{font-size:clamp(46px,4.6vw,60px)}
+  #inicio .hero-copy>p{font-size:16.5px}
+  .hero-visual{max-width:230px}
+  .hero-visual img{max-width:220px}
+}
+
+/* Mobile: solo el logo de WhatsApp, sin tarjeta/contenedor exterior. */
+@media(max-width:767px){
+  .ts-wa-trigger{
+    width:52px!important;
+    height:52px!important;
+    min-width:52px!important;
+    min-height:52px!important;
+    padding:0!important;
+    border:0!important;
+    background:transparent!important;
+    box-shadow:none!important;
+    border-radius:50%!important;
+    overflow:visible!important;
+  }
+  .ts-wa-trigger-copy{display:none!important}
+  .ts-wa-icon-wrap{
+    width:52px!important;
+    height:52px!important;
+    flex:0 0 52px!important;
+    border:0!important;
+    background:transparent!important;
+    border-radius:50%!important;
+    overflow:visible!important;
+  }
+  .ts-wa-trigger img{
+    width:52px!important;
+    height:52px!important;
+    object-fit:contain!important;
+    border-radius:50%!important;
+  }
+
+  #inicio.hero{padding-top:38px;padding-bottom:30px}
+  #inicio .hero-shell{gap:24px}
+  .hero-visual{max-width:168px;width:100%;margin-inline:auto}
+  .hero-visual img{width:100%;max-width:160px;height:auto}
+  #inicio h1{font-size:clamp(38px,10.5vw,50px);line-height:1.03}
+  #inicio .hero-copy>p{font-size:15.5px;line-height:1.65}
+}
+
+@media(max-width:390px){
+  .hero-visual{max-width:152px}
+  .hero-visual img{max-width:146px}
+  #inicio h1{font-size:clamp(36px,10.2vw,44px)}
+}
+
