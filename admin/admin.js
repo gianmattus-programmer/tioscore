@@ -87,22 +87,128 @@ const dz=$('#dropZone');
 dz?.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f?.type==='application/pdf')processPdf(f)});
 
 async function processPdf(file){
- $('#uploadState').classList.remove('hidden');$('#uploadTitle').textContent='Leyendo '+file.name;$('#uploadDetail').textContent='Identificando estructura y secciones del reporte…';
+ $('#uploadState').classList.remove('hidden');
+ $('#uploadTitle').textContent='Leyendo '+file.name;
+ $('#uploadDetail').textContent='Revisando texto digital y páginas escaneadas…';
  try{
-  const text=await extractPdfText(file);
-  if(text.length<100)throw new Error('El PDF contiene muy poco texto extraíble. Puede ser un escaneo o imagen; requiere una ruta de lectura visual.');
-  $('#uploadDetail').textContent='Interpretando créditos, morosidad, entidades, consultas y comportamiento…';
-  const r=await fetch('/api/analyze',{method:'POST',headers:{'content-type':'application/json'},credentials:'include',body:JSON.stringify({filename:file.name,text})});
-  const d=await r.json();if(!r.ok)throw new Error(d.message||d.error||'No se pudo analizar el reporte');
+  const extracted=await extractPdfHybrid(file);
+  if(extracted.text.length<100)throw new Error('No se logró obtener suficiente contenido legible del reporte.');
+  const mode=extracted.visualPages>0
+    ? 'Lectura híbrida completada: '+extracted.digitalPages+' páginas digitales y '+extracted.visualPages+' páginas visuales.'
+    : 'Lectura digital completada.';
+  $('#uploadDetail').textContent=mode+' Interpretando créditos, morosidad, entidades y comportamiento…';
+  const r=await fetch('/api/analyze',{
+    method:'POST',
+    headers:{'content-type':'application/json'},
+    credentials:'include',
+    body:JSON.stringify({
+      filename:file.name,
+      text:extracted.text,
+      extractionMeta:{
+        totalPages:extracted.totalPages,
+        digitalPages:extracted.digitalPages,
+        visualPages:extracted.visualPages,
+        mode:extracted.visualPages>0?'hybrid':'digital'
+      }
+    })
+  });
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.message||d.error||'No se pudo analizar el reporte');
+  if(!d.analysis.sourceReport)d.analysis.sourceReport={};
+  d.analysis.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + visión)':'Texto digital';
+  d.analysis.sourceReport.totalPages=extracted.totalPages;
+  d.analysis.sourceReport.visualPages=extracted.visualPages;
   loadAnalysis(d.analysis,false,file.name);
- }catch(err){$('#uploadTitle').textContent='No se pudo completar la lectura';$('#uploadDetail').textContent=err.message}
+ }catch(err){
+  $('#uploadTitle').textContent='No se pudo completar la lectura';
+  $('#uploadDetail').textContent=err.message;
+ }
 }
-async function extractPdfText(file){
+
+async function extractPdfHybrid(file){
  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
- const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise,pages=[];
- for(let i=1;i<=Math.min(pdf.numPages,60);i++){const p=await pdf.getPage(i),c=await p.getTextContent();pages.push('--- PÁGINA '+i+' ---\n'+c.items.map(x=>x.str).join(' '))}
- return pages.join('\n\n').slice(0,260000);
+ const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
+ const totalPages=Math.min(pdf.numPages,60);
+ const pages=[];
+ let digitalPages=0,visualPages=0;
+
+ for(let i=1;i<=totalPages;i++){
+  $('#uploadDetail').textContent='Página '+i+' de '+totalPages+' · detectando método de lectura…';
+  const page=await pdf.getPage(i);
+  const content=await page.getTextContent();
+  const digitalText=content.items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
+
+  if(isDigitalTextUseful(digitalText,content.items)){
+    digitalPages++;
+    pages.push('--- PÁGINA '+i+' · TEXTO DIGITAL ---\n'+digitalText);
+    continue;
+  }
+
+  visualPages++;
+  $('#uploadDetail').textContent='Página '+i+' de '+totalPages+' · lectura visual con IA…';
+  const image=await renderPageForVision(page);
+  const visualText=await readPageVisually(image,i,file.name);
+  pages.push('--- PÁGINA '+i+' · LECTURA VISUAL ---\n'+visualText);
+ }
+
+ return {
+  text:pages.join('\n\n').slice(0,300000),
+  totalPages,
+  digitalPages,
+  visualPages
+ };
+}
+
+function isDigitalTextUseful(text,items){
+ if(text.length>=220)return true;
+ if(text.length>=90&&items.length>=18)return true;
+ const financialSignals=(text.match(/(?:S\/|soles|deuda|saldo|banco|entidad|normal|mora|cr[eé]dito|clasificaci[oó]n|sentinel)/gi)||[]).length;
+ return text.length>=70&&financialSignals>=3;
+}
+
+async function renderPageForVision(page){
+ const base=page.getViewport({scale:1});
+ const targetWidth=base.width>0?Math.min(1350,Math.max(980,base.width*1.45)):1200;
+ const scale=targetWidth/base.width;
+ const viewport=page.getViewport({scale});
+ const canvas=document.createElement('canvas');
+ const ctx=canvas.getContext('2d',{alpha:false});
+ canvas.width=Math.ceil(viewport.width);
+ canvas.height=Math.ceil(viewport.height);
+ ctx.fillStyle='#ffffff';
+ ctx.fillRect(0,0,canvas.width,canvas.height);
+ await page.render({canvasContext:ctx,viewport}).promise;
+
+ let quality=.76;
+ let image=canvas.toDataURL('image/jpeg',quality);
+ while(image.length>2_700_000&&quality>.42){
+  quality-=.08;
+  image=canvas.toDataURL('image/jpeg',quality);
+ }
+ if(image.length>3_100_000){
+  const shrink=document.createElement('canvas');
+  const ratio=Math.sqrt(2_500_000/image.length);
+  shrink.width=Math.max(700,Math.floor(canvas.width*ratio));
+  shrink.height=Math.max(900,Math.floor(canvas.height*ratio));
+  const sctx=shrink.getContext('2d',{alpha:false});
+  sctx.fillStyle='#fff';sctx.fillRect(0,0,shrink.width,shrink.height);
+  sctx.drawImage(canvas,0,0,shrink.width,shrink.height);
+  image=shrink.toDataURL('image/jpeg',.68);
+ }
+ return image;
+}
+
+async function readPageVisually(image,page,filename){
+ const r=await fetch('/api/vision-page',{
+  method:'POST',
+  headers:{'content-type':'application/json'},
+  credentials:'include',
+  body:JSON.stringify({image,page,filename})
+ });
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(d.message||('No se pudo leer visualmente la página '+page));
+ return String(d.text||'').trim()||'[Página sin contenido legible]';
 }
 
 function loadAnalysis(a,isDemo=false,filename=''){
@@ -155,7 +261,7 @@ function renderChart(series){
 }
 function renderComposition(items){const vals=items.map(v=>Number(v.value)||0),total=vals.reduce((a,b)=>a+b,0)||1;$('#debtComposition').innerHTML=items.map((v,i)=>{const pct=Math.max(0,Math.min(100,vals[i]/total*100));return '<div class="composition-item"><div class="composition-top"><b>'+esc(v.label)+'</b><span>'+money(v.value)+' · '+pct.toFixed(0)+'%</span></div><div class="bar"><i style="width:'+pct+'%"></i></div></div>'}).join('')||'<div class="empty-line">Sin composición disponible.</div>'}
 function renderMonthly(items){$('#monthlyBehavior').innerHTML=items.map(v=>{const s=String(v.status||'').toLowerCase(),c=/normal|al día/.test(s)?'good':/mora|vencid|impag|pérdida/.test(s)?'bad':'warn',width=/normal|al día/.test(s)?100:/mora|vencid|impag|pérdida/.test(s)?35:65;return '<div class="month-row"><span>'+esc(v.period)+'</span><div class="month-track"><i class="'+c+'" style="width:'+width+'%"></i></div><b>'+esc(v.status||'—')+'</b></div>'}).join('')||'<div class="empty-line">Sin historial mensual estructurado.</div>'}
-function renderCoverage(x){const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;$('#coverageBox').innerHTML='<div class="coverage-item"><span>Fuente detectada</span><b>'+esc(s.provider||'No identificada')+'</b></div><div class="coverage-item"><span>Tipo de reporte</span><b>'+esc(s.type||'No identificado')+'</b></div><div class="coverage-item"><span>Periodo cubierto</span><b>'+esc(s.periodCovered||'No informado')+'</b></div><div class="coverage-item"><span>Secciones estructuradas</span><b>'+det+(exp?' / '+exp:'')+'</b></div><div class="coverage-item"><span>Confianza de extracción</span><b>'+esc(x.confidence||0)+'%</b></div>'}
+function renderCoverage(x){const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;$('#coverageBox').innerHTML='<div class="coverage-item"><span>Fuente detectada</span><b>'+esc(s.provider||'No identificada')+'</b></div><div class="coverage-item"><span>Tipo de reporte</span><b>'+esc(s.type||'No identificado')+'</b></div><div class="coverage-item"><span>Método de lectura</span><b>'+esc(s.extractionMode||'Texto digital')+'</b></div><div class="coverage-item"><span>Páginas del reporte</span><b>'+esc(s.totalPages||'No informado')+'</b></div><div class="coverage-item"><span>Páginas leídas visualmente</span><b>'+esc(s.visualPages||0)+'</b></div><div class="coverage-item"><span>Periodo cubierto</span><b>'+esc(s.periodCovered||'No informado')+'</b></div><div class="coverage-item"><span>Secciones estructuradas</span><b>'+det+(exp?' / '+exp:'')+'</b></div><div class="coverage-item"><span>Confianza de extracción</span><b>'+esc(x.confidence||0)+'%</b></div>'}
 
 $('#copyActionsBtn')?.addEventListener('click',async()=>{if(!state.analysis)return;const t=state.analysis.recommendations.map((r,i)=>(i+1)+'. '+r.title+'\n'+r.text).join('\n\n');await navigator.clipboard.writeText(t);$('#copyActionsBtn').textContent='Copiado';setTimeout(()=>$('#copyActionsBtn').textContent='Copiar',1200)});
 $$('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{await navigator.clipboard.writeText($(b.dataset.copy)?.innerText||'');b.textContent='Copiado';setTimeout(()=>b.textContent='Copiar',1000)}));

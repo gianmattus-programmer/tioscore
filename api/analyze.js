@@ -17,7 +17,7 @@ module.exports=async(req,res)=>{
  if(req.method==='GET')return res.status(200).json({configured:!!process.env.OPENAI_API_KEY});
  if(req.method!=='POST')return res.status(405).json({error:'method_not_allowed'});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured',message:'Falta configurar OPENAI_API_KEY en Vercel.'});
- const text=String(req.body?.text||'').slice(0,260000),filename=String(req.body?.filename||'reporte.pdf');
+ const text=String(req.body?.text||'').slice(0,300000),filename=String(req.body?.filename||'reporte.pdf'),extractionMeta=req.body?.extractionMeta||{};
  if(text.length<100)return res.status(400).json({error:'pdf_without_text',message:'El PDF no contiene suficiente texto digital para esta ruta de lectura.'});
 
  const prompt=`Eres el motor de estructuración y apoyo educativo de Tío Score para reportes crediticios peruanos, especialmente reportes de Sentinel en cualquiera de sus variantes de estructura, extensión y orden de secciones.
