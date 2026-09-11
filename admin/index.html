@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="robots" content="noindex,nofollow,noarchive">
   <meta name="theme-color" content="#fbfaf7">
-  <title>Tío Score Admin · Análisis financiero con IA</title>
+  <title>Tío Score · Análisis privado</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp">
   <link rel="stylesheet" href="/admin/admin.css">
 </head>
@@ -15,11 +15,8 @@
       <div class="gate-mark"><img src="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp" alt=""></div>
       <span class="eyebrow">MODO ADMIN PRIVADO</span>
       <h1>Configura el acceso privado</h1>
-      <p>La interfaz ya está instalada, pero el acceso seguro necesita las variables privadas del proyecto en Vercel.</p>
-      <div class="code-list">
-        <code>ADMIN_PASSWORD</code><code>ADMIN_SESSION_SECRET</code><code>OPENAI_API_KEY</code>
-      </div>
-      <p class="muted">Ninguna contraseña o clave se guarda en GitHub.</p>
+      <p>Faltan variables privadas del proyecto en Vercel.</p>
+      <div class="code-list"><code>ADMIN_PASSWORD</code><code>ADMIN_SESSION_SECRET</code><code>OPENAI_API_KEY</code></div>
     </div>
   </div>
 
@@ -40,13 +37,13 @@
       <a href="/" class="brand"><img src="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp" alt=""><span><b>TÍO SCORE</b><small>Análisis privado</small></span></a>
       <div class="private-pill"><span></span> Acceso privado</div>
       <nav class="side-nav">
-        <button class="nav-item active" data-view="analysis"><span>✦</span> Nuevo análisis</button>
-        <button class="nav-item" data-view="history"><span>◷</span> Historial</button>
-        <button class="nav-item" data-view="settings"><span>⚙</span> Configuración</button>
+        <button class="nav-item active" data-view="analysis"><span>01</span> Análisis</button>
+        <button class="nav-item" data-view="history"><span>02</span> Historial</button>
+        <button class="nav-item" data-view="settings"><span>03</span> Configuración</button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="secure-note"><b>Datos sensibles</b><small>Los reportes solo se procesan dentro de tu sesión.</small></div>
-        <button id="logoutBtn" class="btn ghost full">Cerrar sesión</button>
+        <div class="secure-note admin-only"><b>Información sensible</b><small>No compartas la vista administrativa completa durante una transmisión.</small></div>
+        <button id="logoutBtn" class="btn ghost full admin-only">Cerrar sesión</button>
       </div>
     </aside>
 
@@ -57,8 +54,9 @@
           <h1>Centro de análisis</h1>
         </div>
         <div class="top-actions">
-          <button id="demoBtn" class="btn ghost">Ver demo visual</button>
-          <button id="newAnalysisBtn" class="btn primary">+ Nuevo análisis</button>
+          <button id="clientModeBtn" class="btn ghost">Vista cliente</button>
+          <button id="demoBtn" class="btn ghost admin-only">Demo</button>
+          <button id="newAnalysisBtn" class="btn primary admin-only">+ Nuevo análisis</button>
         </div>
       </header>
 
@@ -67,101 +65,158 @@
           <div class="upload-icon">PDF</div>
           <div>
             <span class="eyebrow">NUEVO REPORTE</span>
-            <h2>Suelta aquí el PDF para automatizar el análisis</h2>
-            <p>Extraemos los datos, calculamos indicadores y la IA genera un plan de acción priorizado.</p>
+            <h2>Analizar reporte Sentinel</h2>
+            <p>Admite distintas estructuras de reporte. El sistema identifica sus secciones antes de interpretar los datos.</p>
           </div>
           <label class="btn primary file-btn">Seleccionar PDF<input id="pdfInput" type="file" accept="application/pdf"></label>
-          <div id="dropZone" class="drop-zone">Arrastra tu reporte aquí</div>
-          <div id="uploadState" class="upload-state hidden">
-            <div class="spinner"></div><div><b id="uploadTitle">Procesando reporte…</b><small id="uploadDetail">Extrayendo información del PDF</small></div>
-          </div>
+          <div id="dropZone" class="drop-zone">Arrastra el reporte aquí</div>
+          <div id="uploadState" class="upload-state hidden"><div class="spinner"></div><div><b id="uploadTitle">Procesando…</b><small id="uploadDetail">Leyendo el documento</small></div></div>
         </section>
 
-        <section id="resultPanel" class="result hidden">
-          <div class="result-hero card">
-            <div class="profile-head">
-              <div class="avatar" id="initials">AN</div>
-              <div><span class="eyebrow">ANÁLISIS ACTIVO</span><h2 id="clientName">Andres</h2><p id="analysisMeta">Reporte procesado · hoy</p></div>
-            </div>
-            <div class="confidence"><span>Confianza del análisis</span><b id="confidenceValue">Alta · 92%</b><small id="confidenceNote">Datos suficientes para interpretar el reporte.</small></div>
+        <section id="resultPanel" class="workspace hidden">
+          <div class="workspace-meta">
+            <div><span id="reportTypeBadge" class="report-badge">Sentinel · Reporte detectado</span><span id="analysisMeta">Procesado ahora</span></div>
+            <div class="workspace-meta-right admin-only"><span id="confidenceValue">Confianza —</span><button id="printBtn" class="mini-btn">Guardar PDF</button></div>
           </div>
 
-          <div class="grid two">
-            <article class="card score-card">
-              <div class="section-head"><div><span class="eyebrow">SCORE CREDITICIO</span><h3>Situación actual</h3></div><span id="riskBadge" class="status warning">REGULAR</span></div>
-              <div class="score-layout">
-                <div class="gauge" id="scoreGauge" style="--score:54.3"><div class="gauge-hole"><b id="scoreValue">543</b><span>/ 999</span></div></div>
-                <div class="score-copy"><div class="big-number" id="scoreText">543</div><p id="scoreDescription">Hay señales de alerta que conviene resolver antes de solicitar nuevo financiamiento.</p><div class="delta positive" id="debtDelta">↓ La deuda bajó 48.23%</div></div>
+          <div class="analysis-columns">
+            <!-- IZQUIERDA: lectura, recomendaciones y cierre -->
+            <section class="analysis-pane pane-reading">
+              <header class="pane-header">
+                <span class="pane-index">01</span>
+                <div><span class="eyebrow">LECTURA DEL REPORTE</span><h2>Interpretación y plan</h2></div>
+              </header>
+              <div class="pane-scroll">
+                <section class="pane-block">
+                  <div class="block-heading"><span>Resumen ejecutivo</span><button class="text-btn admin-only" data-copy="#executiveSummary">Copiar</button></div>
+                  <p id="executiveSummary" class="lead-copy"></p>
+                  <div id="summaryTags" class="tags"></div>
+                </section>
+
+                <section class="pane-block">
+                  <div class="block-heading"><span>Alertas y fortalezas</span></div>
+                  <div id="alertsGrid" class="alert-list"></div>
+                </section>
+
+                <section class="pane-block action-block">
+                  <div class="block-heading inverse"><span>¿Qué debe hacer?</span><button id="copyActionsBtn" class="text-btn light admin-only">Copiar</button></div>
+                  <div id="recommendations" class="recommendations"></div>
+                </section>
+
+                <section class="pane-block">
+                  <div class="block-heading"><span>Cierre de la lectura</span></div>
+                  <div id="closingBox" class="closing-box"><b id="closingHeadline">Conclusión</b><p id="closingText"></p></div>
+                </section>
+
+                <section class="pane-block admin-only">
+                  <div class="block-heading"><span>Seguimiento</span><span id="checkProgress" class="quiet-badge">0 / 0</span></div>
+                  <div id="checklist" class="checklist"></div>
+                </section>
+
+                <section class="pane-block admin-only">
+                  <div class="block-heading"><span>Acotación del asesor</span></div>
+                  <textarea id="advisorNotes" placeholder="Notas privadas, acuerdos, observaciones para la siguiente revisión…"></textarea>
+                  <div class="note-actions"><small id="notesStatus">Guardado local</small><button id="saveNotesBtn" class="text-btn">Guardar</button></div>
+                </section>
               </div>
-            </article>
+            </section>
 
-            <article class="card">
-              <div class="section-head"><div><span class="eyebrow">RESUMEN EJECUTIVO</span><h3>Lectura en 30 segundos</h3></div><button class="mini-btn" data-copy="#executiveSummary">Copiar</button></div>
-              <p id="executiveSummary" class="summary-text">Perfil con comportamiento bancario estable, pero con deuda comercial activa. La prioridad es regularizar las obligaciones pendientes antes de solicitar nuevos productos.</p>
-              <div class="quick-tags" id="summaryTags"><span>Banco: estable</span><span>Deuda comercial activa</span><span>Sin atraso bancario</span></div>
-            </article>
+            <!-- CENTRO: toda la ficha del cliente -->
+            <section class="analysis-pane pane-client">
+              <header class="pane-header client-header">
+                <span class="pane-index">02</span>
+                <div><span class="eyebrow">FICHA INTEGRAL</span><h2>Información del cliente</h2></div>
+                <button id="editDataBtn" class="mini-btn admin-only">Editar datos</button>
+              </header>
+              <div class="pane-scroll">
+                <section class="client-identity">
+                  <div class="avatar" id="initials">TS</div>
+                  <div class="identity-copy"><h2 id="clientName">Cliente</h2><p id="clientSubline">Documento protegido · fecha del reporte</p></div>
+                  <div id="riskBadge" class="risk-label">POR REVISAR</div>
+                </section>
+
+                <section class="score-band">
+                  <div class="score-copy"><span>Score educativo</span><b id="scoreValue">—</b><small>/ 999 · no es un score oficial</small></div>
+                  <div class="score-meter"><div id="scoreMeterFill"></div></div>
+                  <p id="scoreDescription"></p>
+                  <div id="debtDelta" class="debt-delta"></div>
+                </section>
+
+                <section class="client-section">
+                  <div class="section-title-row"><h3>Datos identificados</h3><small>Extraídos del reporte</small></div>
+                  <div id="detectedData" class="data-list"></div>
+                </section>
+
+                <section class="client-section">
+                  <div class="section-title-row"><h3>Entidades y obligaciones</h3><small id="entityCount">0 registros</small></div>
+                  <div id="entitiesTable" class="formal-table"></div>
+                </section>
+
+                <section class="client-section">
+                  <div class="section-title-row"><h3>Detalle de obligaciones</h3><small>Financieras y comerciales</small></div>
+                  <div id="obligationsTable" class="formal-table"></div>
+                </section>
+
+                <section class="client-section">
+                  <div class="section-title-row"><h3>Consultas y solicitudes</h3><small>Cuando el reporte las informa</small></div>
+                  <div id="inquiriesList" class="timeline-list"></div>
+                </section>
+
+                <section class="client-section">
+                  <div class="section-title-row"><h3>Información adicional del reporte</h3><small>Campos y bloques no omitidos</small></div>
+                  <div id="reportSections" class="report-sections"></div>
+                </section>
+              </div>
+            </section>
+
+            <!-- DERECHA: gráficos y comportamiento -->
+            <section class="analysis-pane pane-insights">
+              <header class="pane-header">
+                <span class="pane-index">03</span>
+                <div><span class="eyebrow">ANÁLISIS VISUAL</span><h2>Comportamiento financiero</h2></div>
+              </header>
+              <div class="pane-scroll">
+                <section class="pane-block metrics-block">
+                  <div class="block-heading"><span>Cifras clave</span></div>
+                  <div id="metricsGrid" class="metrics-grid"></div>
+                </section>
+
+                <section class="pane-block">
+                  <div class="block-heading"><span>Evolución de deuda</span></div>
+                  <div class="chart-wrap"><svg id="debtChart" viewBox="0 0 900 280" preserveAspectRatio="none"></svg></div>
+                  <div id="chartLegend" class="chart-legend"></div>
+                </section>
+
+                <section class="pane-block">
+                  <div class="block-heading"><span>Composición de deuda</span></div>
+                  <div id="debtComposition" class="composition-list"></div>
+                </section>
+
+                <section class="pane-block">
+                  <div class="block-heading"><span>Comportamiento mensual</span></div>
+                  <div id="monthlyBehavior" class="monthly-grid"></div>
+                </section>
+
+                <section class="pane-block admin-only">
+                  <div class="block-heading"><span>Cobertura de lectura</span></div>
+                  <div id="coverageBox" class="coverage-box"></div>
+                </section>
+              </div>
+            </section>
           </div>
-
-          <article class="card">
-            <div class="section-head"><div><span class="eyebrow">ALERTAS CRÍTICAS</span><h3>Lo que requiere tu atención</h3></div><span class="legend"><i class="red"></i>Crítico <i class="yellow"></i>Revisar <i class="green"></i>Bien</span></div>
-            <div id="alertsGrid" class="alerts-grid"></div>
-          </article>
-
-          <div class="grid two">
-            <article class="card">
-              <div class="section-head"><div><span class="eyebrow">DATOS DETECTADOS</span><h3>Verifica antes de continuar</h3></div><button id="editDataBtn" class="mini-btn">Editar</button></div>
-              <div id="detectedData" class="data-grid"></div>
-              <p class="microcopy">Los datos editados quedan marcados como corrección manual.</p>
-            </article>
-
-            <article class="card">
-              <div class="section-head"><div><span class="eyebrow">CIFRAS CLAVE</span><h3>Indicadores principales</h3></div></div>
-              <div id="metricsGrid" class="metrics-grid"></div>
-            </article>
-          </div>
-
-          <article class="card">
-            <div class="section-head"><div><span class="eyebrow">EVOLUCIÓN DE LA DEUDA</span><h3>Cómo se ha movido en el tiempo</h3></div><span class="status positive">Tendencia favorable</span></div>
-            <div class="chart-wrap"><svg id="debtChart" viewBox="0 0 900 280" preserveAspectRatio="none" aria-label="Evolución de la deuda"></svg></div>
-            <div id="chartLegend" class="chart-legend"></div>
-          </article>
-
-          <article class="card action-card">
-            <div class="section-head"><div><span class="eyebrow lime">¿QUÉ DEBES HACER?</span><h3>Plan de acción priorizado por IA</h3></div><button id="copyActionsBtn" class="btn lime">Copiar recomendaciones</button></div>
-            <div class="priority-strip"><span><b>1</b> Resolver ahora</span><span><b>2</b> Hacer después</span><span><b>3</b> Evitar por el momento</span></div>
-            <div id="recommendations" class="recommendations"></div>
-          </article>
-
-          <div class="grid two">
-            <article class="card">
-              <div class="section-head"><div><span class="eyebrow">CHECKLIST DE SEGUIMIENTO</span><h3>Próximos pasos</h3></div><span id="checkProgress" class="status neutral">0 / 4</span></div>
-              <div id="checklist" class="checklist"></div>
-            </article>
-
-            <article class="card">
-              <div class="section-head"><div><span class="eyebrow">NOTAS DEL ASESOR</span><h3>Solo visibles en el admin</h3></div></div>
-              <textarea id="advisorNotes" placeholder="Añade observaciones de la asesoría, acuerdos o próximos seguimientos…"></textarea>
-              <div class="note-actions"><small id="notesStatus">Guardado automático</small><button id="saveNotesBtn" class="mini-btn">Guardar ahora</button></div>
-            </article>
-          </div>
-
-          <article class="card footer-actions">
-            <div><span class="eyebrow">CIERRE DEL ANÁLISIS</span><h3>Resultado listo</h3><p>Exporta el resultado o continúa con el siguiente reporte.</p></div>
-            <div class="button-row"><button id="printBtn" class="btn dark">Imprimir / Guardar PDF</button><button id="newReportBtn" class="btn primary">Analizar otro reporte</button></div>
-          </article>
         </section>
       </section>
 
       <section id="historyView" class="view hidden">
-        <div class="section-head page-head"><div><span class="eyebrow">HISTORIAL</span><h2>Reportes analizados</h2><p>Abre nuevamente una sesión o compara la evolución de una persona.</p></div><button class="btn primary" id="historyNewBtn">+ Nuevo análisis</button></div>
+        <div class="page-head"><div><span class="eyebrow">HISTORIAL</span><h2>Reportes analizados</h2><p>Sesiones guardadas en este navegador.</p></div><button class="btn primary" id="historyNewBtn">+ Nuevo análisis</button></div>
         <div id="historyList" class="history-list"></div>
       </section>
 
       <section id="settingsView" class="view hidden">
-        <div class="section-head page-head"><div><span class="eyebrow">CONFIGURACIÓN</span><h2>Motor de análisis</h2><p>Estado de la automatización y privacidad.</p></div></div>
-        <div class="grid two">
-          <article class="card"><h3>Privacidad</h3><div class="setting-row"><span>Acceso por contraseña</span><b class="ok">Activo</b></div><div class="setting-row"><span>Sesión segura</span><b class="ok">HttpOnly</b></div><div class="setting-row"><span>Panel indexable</span><b>No</b></div></article>
-          <article class="card"><h3>IA</h3><div class="setting-row"><span>Proveedor</span><b>OpenAI</b></div><div class="setting-row"><span>Clave guardada en GitHub</span><b class="ok">Nunca</b></div><div class="setting-row"><span>Estado</span><b id="aiStatus">Comprobando…</b></div></article>
+        <div class="page-head"><div><span class="eyebrow">CONFIGURACIÓN</span><h2>Motor de análisis</h2></div></div>
+        <div class="settings-grid">
+          <article class="settings-card"><h3>Privacidad</h3><div class="setting-row"><span>Acceso por contraseña</span><b class="ok">Activo</b></div><div class="setting-row"><span>Sesión</span><b class="ok">Protegida</b></div><div class="setting-row"><span>Indexación pública</span><b>No</b></div></article>
+          <article class="settings-card"><h3>IA</h3><div class="setting-row"><span>Proveedor</span><b>OpenAI</b></div><div class="setting-row"><span>Clave en GitHub</span><b class="ok">Nunca</b></div><div class="setting-row"><span>Estado</span><b id="aiStatus">Comprobando…</b></div></article>
         </div>
       </section>
     </main>
