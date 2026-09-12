@@ -44,6 +44,10 @@ REGLAS CRÍTICAS
 - monthlyBehavior puede incluir hasta 48 periodos relevantes.
 - reportSections debe conservar los bloques relevantes del documento que no estén ya plenamente representados. Sé detallado.
 - entities y obligations deben incluir todos los registros claramente identificables, no solo los más importantes.
+- TODO texto destinado a mostrarse en la interfaz debe estar en español natural.
+- En raw, usa etiquetas humanas en español como claves. Ejemplo: "Tipo de documento", nunca "documentType"; "Fecha del reporte", nunca "reportDate".
+- En reportSections, tanto title como cada items[].label deben estar en español legible. Nunca expongas nombres internos camelCase, snake_case ni claves técnicas en inglés.
+- Si el documento fuente usa un nombre técnico en inglés, conserva su significado pero traduce la etiqueta visible al español.
 
 ESTRUCTURA EXACTA
 {
