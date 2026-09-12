@@ -111,6 +111,131 @@ function clientSafeValue(label,value){
  return value;
 }
 
+const LABELS_ES={
+ documentType:'Tipo de documento',
+ documentNumber:'Número de documento',
+ documentId:'Documento',
+ idNumber:'Número de documento',
+ firstName:'Nombre',
+ middleName:'Segundo nombre',
+ lastName:'Apellido',
+ fullName:'Nombre completo',
+ birthDate:'Fecha de nacimiento',
+ dateOfBirth:'Fecha de nacimiento',
+ maritalStatus:'Estado civil',
+ reportType:'Tipo de reporte',
+ reportDate:'Fecha del reporte',
+ periodCovered:'Periodo cubierto',
+ sectionsDetected:'Secciones detectadas',
+ sectionsExpected:'Secciones esperadas',
+ sourceReport:'Fuente del reporte',
+ provider:'Fuente',
+ client:'Cliente',
+ entities:'Entidades',
+ entity:'Entidad',
+ score:'Puntaje',
+ risk:'Riesgo',
+ confidence:'Confianza',
+ debtChange:'Variación de deuda',
+ scoreDescription:'Descripción del puntaje',
+ summary:'Resumen',
+ tags:'Etiquetas',
+ alerts:'Alertas',
+ metrics:'Métricas',
+ debtSeries:'Evolución de la deuda',
+ debtComposition:'Composición de la deuda',
+ monthlyBehavior:'Comportamiento mensual',
+ daysPastDue:'Días de atraso',
+ balance:'Saldo',
+ product:'Producto',
+ status:'Estado',
+ classification:'Clasificación',
+ creditLimit:'Límite de crédito',
+ limit:'Límite',
+ monthlyPayment:'Cuota mensual',
+ paymentAmount:'Monto de pago',
+ dueDate:'Fecha de vencimiento',
+ inquiries:'Consultas',
+ recommendations:'Recomendaciones',
+ closing:'Cierre',
+ headline:'Conclusión',
+ checklist:'Seguimiento',
+ reportSections:'Secciones del reporte',
+ reportCharts:'Gráficos del reporte',
+ noteEvolution:'Evolución de nota',
+ classificationHistory:'Historial de calificación',
+ overdueByType:'Deuda vencida por tipo',
+ overdueShare:'Distribución de deuda vencida',
+ currentVsOverdue:'Deuda vigente y vencida',
+ institutionShare:'Participación por institución',
+ current:'Vigente',
+ overdue:'Vencido',
+ other:'Otros',
+ amount:'Monto',
+ totalAmount:'Monto total',
+ currency:'Moneda',
+ address:'Dirección',
+ phone:'Teléfono',
+ phoneNumber:'Teléfono',
+ email:'Correo electrónico',
+ occupation:'Ocupación',
+ employer:'Empleador',
+ income:'Ingresos',
+ monthlyIncome:'Ingreso mensual',
+ credit:'Crédito',
+ loan:'Préstamo',
+ card:'Tarjeta',
+ creditCard:'Tarjeta de crédito',
+ creditLine:'Línea de crédito',
+ installment:'Cuota',
+ installments:'Cuotas',
+ term:'Plazo',
+ startDate:'Fecha de inicio',
+ endDate:'Fecha de fin',
+ lastUpdate:'Última actualización',
+ updatedAt:'Última actualización',
+ createdAt:'Fecha de creación',
+ requestDate:'Fecha de consulta',
+ inquiryDate:'Fecha de consulta',
+ institution:'Institución',
+ accountNumber:'Número de cuenta',
+ contractNumber:'Número de contrato',
+ documentStatus:'Estado del documento'
+};
+const LABEL_WORDS_ES={
+ document:'documento',type:'tipo',number:'número',id:'ID',first:'primer',middle:'segundo',last:'último',
+ name:'nombre',full:'completo',birth:'nacimiento',date:'fecha',marital:'civil',report:'reporte',period:'periodo',
+ covered:'cubierto',sections:'secciones',detected:'detectadas',expected:'esperadas',source:'fuente',provider:'fuente',
+ client:'cliente',entities:'entidades',entity:'entidad',score:'puntaje',risk:'riesgo',confidence:'confianza',
+ debt:'deuda',change:'variación',description:'descripción',summary:'resumen',tags:'etiquetas',alerts:'alertas',
+ metrics:'métricas',series:'evolución',composition:'composición',monthly:'mensual',behavior:'comportamiento',
+ days:'días',past:'atraso',due:'vencimiento',balance:'saldo',product:'producto',status:'estado',
+ classification:'clasificación',credit:'crédito',limit:'límite',payment:'pago',amount:'monto',inquiries:'consultas',
+ recommendations:'recomendaciones',closing:'cierre',headline:'conclusión',checklist:'seguimiento',charts:'gráficos',
+ note:'nota',evolution:'evolución',history:'historial',overdue:'vencido',share:'participación',current:'vigente',
+ other:'otros',institution:'institución',currency:'moneda',address:'dirección',phone:'teléfono',email:'correo',
+ occupation:'ocupación',employer:'empleador',income:'ingresos',loan:'préstamo',card:'tarjeta',line:'línea',
+ installment:'cuota',installments:'cuotas',term:'plazo',start:'inicio',end:'fin',update:'actualización',
+ updated:'actualización',created:'creación',request:'consulta',inquiry:'consulta',account:'cuenta',contract:'contrato'
+};
+function labelEs(label=''){
+ const raw=String(label??'').trim();
+ if(!raw)return 'Campo';
+ if(LABELS_ES[raw])return LABELS_ES[raw];
+ const compact=raw.replace(/[\s_-]+/g,'').toLowerCase();
+ const mappedKey=Object.keys(LABELS_ES).find(k=>k.replace(/[\s_-]+/g,'').toLowerCase()===compact);
+ if(mappedKey)return LABELS_ES[mappedKey];
+ const looksTechnical=/[_-]/.test(raw)||/[a-z0-9][A-Z]/.test(raw)||/^[a-z]+(?:[A-Z][a-z0-9]*)+$/.test(raw);
+ if(!looksTechnical)return raw.charAt(0).toUpperCase()+raw.slice(1);
+ const spaced=raw.replace(/([a-z0-9])([A-Z])/g,'$1 $2').replace(/[_-]+/g,' ').trim();
+ const words=spaced.split(/\s+/).map(w=>{
+  const lower=w.toLowerCase();
+  return LABEL_WORDS_ES[lower]||w;
+ });
+ const out=words.join(' ');
+ return out.charAt(0).toUpperCase()+out.slice(1);
+}
+
 $('#loginForm')?.addEventListener('submit',async e=>{
  e.preventDefault();$('#loginError').textContent='';
  const r=await fetch('/api/admin-login',{method:'POST',headers:{'content-type':'application/json'},credentials:'include',body:JSON.stringify({password:$('#passwordInput').value})});
@@ -509,7 +634,7 @@ function updateCheck(){const all=$$('#checklist input'),done=all.filter(x=>x.che
 function renderData(data){
  const rows=Object.entries(data).filter(([k])=>!isSurnameLabel(k)).map(([k,v])=>{
   const safe=clientSafeValue(k,v);
-  return '<div class="data-item" data-key="'+esc(k)+'"><span>'+esc(k)+'</span><b>'+esc(safe||'No informado')+'</b></div>';
+  return '<div class="data-item" data-key="'+esc(k)+'"><span>'+esc(labelEs(k))+'</span><b>'+esc(safe||'No informado')+'</b></div>';
  });
  $('#detectedData').innerHTML=rows.join('')||'<div class="empty-line">No se detectaron campos.</div>';
 }
@@ -522,9 +647,9 @@ function renderSections(sections){
  const html=sections.map(s=>{
   const items=(Array.isArray(s.items)?s.items:[]).filter(i=>!isSurnameLabel(i.label)).map(i=>{
    const safe=clientSafeValue(i.label,i.value);
-   return '<div class="kv"><dt>'+esc(i.label)+'</dt><dd>'+esc(safe||'No informado')+'</dd></div>';
+   return '<div class="kv"><dt>'+esc(labelEs(i.label))+'</dt><dd>'+esc(safe||'No informado')+'</dd></div>';
   }).join('');
-  return items?'<div class="report-section"><h4>'+esc(s.title||'Sección')+'</h4><dl>'+items+'</dl></div>':'';
+  return items?'<div class="report-section"><h4>'+esc(labelEs(s.title||'Sección'))+'</h4><dl>'+items+'</dl></div>':'';
  }).join('');
  $('#reportSections').innerHTML=html||'<div class="empty-line">No hay bloques adicionales.</div>';
 }
