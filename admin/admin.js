@@ -200,8 +200,7 @@ const LABELS_ES={
  institution:'Institución',
  accountNumber:'Número de cuenta',
  contractNumber:'Número de contrato',
- documentStatus:'Estado del documento'
-
+ documentStatus:'Estado del documento',
  reportTitle:'Título del reporte',
  creationDateTime:'Fecha y hora de creación',
  informationUpdated:'Información actualizada al',
