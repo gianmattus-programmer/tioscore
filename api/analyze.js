@@ -17,8 +17,58 @@ module.exports=async(req,res)=>{
  if(req.method==='GET')return res.status(200).json({configured:!!process.env.OPENAI_API_KEY});
  if(req.method!=='POST')return res.status(405).json({error:'method_not_allowed'});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured',message:'Falta configurar OPENAI_API_KEY en Vercel.'});
- const text=String(req.body?.text||'').slice(0,300000),filename=String(req.body?.filename||'reporte.pdf'),extractionMeta=req.body?.extractionMeta||{};
+ const text=String(req.body?.text||'').slice(0,240000),filename=String(req.body?.filename||'reporte.pdf'),extractionMeta=req.body?.extractionMeta||{};
+ const quick=req.body?.mode==='quick';
  if(text.length<100)return res.status(400).json({error:'pdf_without_text',message:'El PDF no contiene suficiente texto digital para esta ruta de lectura.'});
+
+ if(quick){
+  const quickPrompt=`Eres el modo rápido de Tío Score. Lee el texto disponible de un reporte crediticio peruano y devuelve SOLO JSON válido, sin markdown.
+Tu objetivo es mostrar una vista preliminar útil lo antes posible mientras otro proceso completa el análisis exhaustivo.
+
+Extrae únicamente información que esté explícitamente presente. No inventes.
+Si aparece un Score Experian u otro score explícito de 1 a 999, úsalo. Si todavía no aparece, score=0.
+Usa solo el primer nombre del titular.
+Oculta el documento y muestra como máximo sus últimos 2 dígitos.
+Todo texto visible debe estar en español natural.
+
+Estructura exacta:
+{
+ "sourceReport":{"provider":"","type":"","reportDate":""},
+ "client":{"name":"","document":"","age":"","reportDate":"","entities":""},
+ "score":0,
+ "confidence":0,
+ "scoreDescription":"",
+ "summary":"",
+ "tags":[""],
+ "raw":{}
+}
+
+Prioriza: nombre, DNI protegido, fecha, Score Experian, nivel del score, bancarizado, capacidad de pago, deuda vigente, deuda vencida y principales alertas visibles.
+En raw usa etiquetas humanas en español, nunca camelCase ni claves técnicas.
+
+ARCHIVO: ${filename}
+TEXTO DISPONIBLE:
+${text.slice(0,90000)}`;
+  try{
+   const r=await fetch('https://api.openai.com/v1/responses',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({model:'gpt-5.6-luna',input:quickPrompt,reasoning:{effort:'low'},max_output_tokens:2400})
+   });
+   const data=await r.json();
+   if(!r.ok)return res.status(502).json({error:'ai_error',message:data?.error?.message||'El proveedor de IA devolvió un error.'});
+   const analysis=JSON.parse(cleanJson(outputText(data)));
+   analysis.score=Math.max(0,Math.min(999,Number(analysis.score)||0));
+   analysis.confidence=Math.max(0,Math.min(100,Number(analysis.confidence)||0));
+   analysis.sourceReport=analysis.sourceReport||{};
+   analysis.client=analysis.client||{};
+   analysis.tags=Array.isArray(analysis.tags)?analysis.tags:[];
+   analysis.raw=analysis.raw&&typeof analysis.raw==='object'?analysis.raw:{};
+   return res.status(200).json({analysis,quick:true});
+  }catch(e){
+   return res.status(500).json({error:'quick_analysis_failed',message:'No se pudo generar la vista rápida.'});
+  }
+ }
 
  const prompt=`Eres el motor de estructuración y apoyo educativo de Tío Score para reportes crediticios peruanos, especialmente reportes de Sentinel en cualquiera de sus variantes de estructura, extensión y orden de secciones.
 
@@ -41,7 +91,7 @@ REGLAS CRÍTICAS
 - Las recomendaciones deben referirse a hechos concretos del reporte y nunca recomendar endeudarse solo para "subir score".
 - Detecta clasificación Normal, CPP, Deficiente, Dudoso, Pérdida u otras equivalentes cuando aparezcan.
 - Detecta días de atraso, deuda directa/indirecta, créditos, tarjetas, líneas, saldos, cuotas, deuda vencida, castigos, deuda comercial, entidades, consultas, avales/garantías y comportamiento histórico cuando existan.
-- monthlyBehavior puede incluir hasta 48 periodos relevantes.
+- monthlyBehavior puede incluir hasta 24 periodos relevantes.
 - reportSections debe conservar los bloques relevantes del documento que no estén ya plenamente representados. Sé detallado.
 - entities y obligations deben incluir todos los registros claramente identificables, no solo los más importantes.
 - TODO texto destinado a mostrarse en la interfaz debe estar en español natural.
@@ -138,7 +188,7 @@ ${text}`;
   const r=await fetch('https://api.openai.com/v1/responses',{
    method:'POST',
    headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
-   body:JSON.stringify({model:'gpt-5.6-luna',input:prompt,reasoning:{effort:'low'},max_output_tokens:18000})
+   body:JSON.stringify({model:'gpt-5.6-luna',input:prompt,reasoning:{effort:'low'},max_output_tokens:11000})
   });
   const data=await r.json();
   if(!r.ok)return res.status(502).json({error:'ai_error',message:data?.error?.message||'El proveedor de IA devolvió un error.'});
