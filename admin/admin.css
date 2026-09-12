@@ -295,12 +295,12 @@ body.client-mode .sidebar{display:none}body.client-mode .main{margin-left:0}body
 /* ===== Ajuste mesa TikTok: centro más estrecho + menú colapsable ===== */
 @media(min-width:981px){
   .analysis-columns{
-    grid-template-columns:minmax(300px,1fr) minmax(410px,455px) minmax(360px,1.12fr);
+    grid-template-columns:minmax(300px,1fr) minmax(410px,455px) minmax(300px,1fr);
   }
   body.sidebar-collapsed .sidebar{display:none}
   body.sidebar-collapsed .main{margin-left:0}
   body.sidebar-collapsed .analysis-columns{
-    grid-template-columns:minmax(340px,1fr) minmax(410px,455px) minmax(420px,1.15fr);
+    grid-template-columns:minmax(340px,1fr) minmax(410px,455px) minmax(340px,1fr);
   }
 }
 #sidebarToggle{
@@ -425,11 +425,11 @@ body.client-mode .sidebar{display:none}body.client-mode .main{margin-left:0}body
 
 @media(max-width:1300px) and (min-width:981px){
   .analysis-columns{
-    grid-template-columns:minmax(260px,.9fr) minmax(390px,430px) minmax(320px,1fr);
+    grid-template-columns:minmax(260px,1fr) minmax(390px,430px) minmax(260px,1fr);
   }
   .pane-client{max-width:430px}
   body.sidebar-collapsed .analysis-columns{
-    grid-template-columns:minmax(300px,1fr) minmax(390px,430px) minmax(360px,1.1fr);
+    grid-template-columns:minmax(300px,1fr) minmax(390px,430px) minmax(300px,1fr);
   }
 }
 @media(max-width:600px){
