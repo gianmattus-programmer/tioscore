@@ -48,8 +48,9 @@ module.exports=async(req,res)=>{
   const instruction=`Lee visualmente esta página de un reporte crediticio peruano, normalmente Sentinel.
 
 TAREA:
-- Transcribe TODO el contenido legible de la página.
+- Extrae TODO el contenido financiero y de identificación relevante que sea legible.
 - Conserva títulos, subtítulos, nombres de entidades, cifras, fechas, estados, clasificaciones, tablas, filas y columnas.
+- Sé compacto: evita repetir encabezados, pies o textos idénticos que aparezcan varias veces en la misma página.
 - Para tablas usa líneas de texto claras separando columnas con " | ".
 - No resumas, no interpretes y no inventes.
 - Si una celda no se puede leer, escribe [ilegible].
@@ -78,7 +79,7 @@ Página: ${page}`;
           ]
         }],
         reasoning:{effort:'low'},
-        max_output_tokens:6000
+        max_output_tokens:3500
       })
     });
     const data=await r.json();
