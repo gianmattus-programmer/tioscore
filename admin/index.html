@@ -120,6 +120,19 @@
         </section>
 
         <section id="resultPanel" class="workspace hidden">
+          <div id="scoreRevealOverlay" class="score-reveal-overlay hidden" aria-hidden="true">
+            <div class="score-reveal-card">
+              <div id="revealScoreFace" class="score-face score-face-reveal face-unrated" aria-hidden="true">
+                <i class="face-eye face-eye-left"></i>
+                <i class="face-eye face-eye-right"></i>
+                <i class="face-mouth"></i>
+              </div>
+              <div class="score-reveal-copy">
+                <span>ANÁLISIS COMPLETADO</span>
+                <b id="revealScoreCategory">Puntaje por revisar</b>
+              </div>
+            </div>
+          </div>
           <div class="workspace-meta">
             <div><span id="reportTypeBadge" class="report-badge">Sentinel · Reporte detectado</span><span id="analysisMeta">Procesado ahora</span></div>
             <div class="workspace-meta-right admin-only"><span id="confidenceValue">Confianza —</span><button id="printBtn" class="mini-btn">Guardar PDF</button></div>
@@ -177,7 +190,11 @@
               </header>
               <div class="pane-scroll">
                 <section class="client-identity">
-                  <div class="avatar" id="initials">TS</div>
+                  <div id="clientScoreFace" class="score-face face-unrated" aria-label="Estado del score">
+                    <i class="face-eye face-eye-left"></i>
+                    <i class="face-eye face-eye-right"></i>
+                    <i class="face-mouth"></i>
+                  </div>
                   <div class="identity-copy"><h2 id="clientName">Cliente</h2><p id="clientSubline">Documento protegido · fecha del reporte</p></div>
                   <div id="riskBadge" class="risk-label">POR REVISAR</div>
                 </section>

@@ -386,9 +386,9 @@ function loadAnalysis(a,isDemo=false,filename=''){
  $('#confidenceValue').textContent='Confianza '+(x.confidence||0)+'%';
  const visibleName=firstName(x.client.name||'Cliente');
  $('#clientName').textContent=visibleName;
- $('#initials').textContent=(visibleName[0]||'T').toUpperCase();
  $('#clientSubline').textContent=[x.client.document||'Documento no informado',x.client.age,x.client.reportDate].filter(Boolean).join(' · ');
  const scoreInfo=renderScoreGauge(x.score);
+ setScoreFace($('#clientScoreFace'),x.score);
  $('#riskBadge').textContent=scoreInfo.category;
  $('#scoreDescription').textContent=x.scoreDescription||'Sin interpretación suficiente.';
  const dc=Number(x.debtChange);$('#debtDelta').textContent=Number.isFinite(dc)&&dc!==0?(dc<0?'↓ Deuda -':'↑ Deuda +')+Math.abs(dc).toFixed(2)+'%':'Variación de deuda no determinada';
@@ -400,6 +400,7 @@ function loadAnalysis(a,isDemo=false,filename=''){
  renderMetrics(x.metrics);renderReportCharts(x);renderCoverage(x);
  $('#advisorNotes').value=x.notes||'';
  if(!isDemo)saveToHistory(filename);
+ runScoreReveal(x.score);
 }
 function getScoreBand(score){
  const s=Number(score)||0;
@@ -409,6 +410,51 @@ function getScoreBand(score){
  if(s>=477)return {index:1,category:'Puntaje Bajo',range:'Score: 477-597'};
  if(s>=1)return {index:0,category:'Puntaje Muy Bajo',range:'Score: 1-476'};
  return {index:-1,category:'Puntaje por revisar',range:'Score: —'};
+}
+
+function scoreFaceClass(score){
+ const info=getScoreBand(score);
+ return info.index>=0?'face-c'+(info.index+1):'face-unrated';
+}
+function setScoreFace(el,score){
+ if(!el)return;
+ el.classList.remove('face-c1','face-c2','face-c3','face-c4','face-c5','face-unrated');
+ el.classList.add(scoreFaceClass(score));
+ const info=getScoreBand(score);
+ el.setAttribute('aria-label',info.category);
+}
+function runScoreReveal(score){
+ const panel=$('#resultPanel');
+ const overlay=$('#scoreRevealOverlay');
+ const face=$('#revealScoreFace');
+ const label=$('#revealScoreCategory');
+ if(!panel||!overlay||!face)return;
+
+ clearTimeout(state.revealTimer);
+ clearTimeout(state.revealHideTimer);
+
+ setScoreFace(face,score);
+ if(label)label.textContent=getScoreBand(score).category;
+
+ panel.classList.add('revealing');
+ overlay.classList.remove('hidden','is-leaving','is-animating');
+ overlay.setAttribute('aria-hidden','false');
+
+ requestAnimationFrame(()=>{
+  requestAnimationFrame(()=>overlay.classList.add('is-animating'));
+ });
+
+ state.revealTimer=setTimeout(()=>{
+  panel.classList.remove('revealing');
+  overlay.classList.remove('is-animating');
+  overlay.classList.add('is-leaving');
+
+  state.revealHideTimer=setTimeout(()=>{
+   overlay.classList.add('hidden');
+   overlay.classList.remove('is-leaving');
+   overlay.setAttribute('aria-hidden','true');
+  },300);
+ },1580);
 }
 
 function polar(cx,cy,r,deg){

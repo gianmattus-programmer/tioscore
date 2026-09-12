@@ -710,3 +710,207 @@ html,body{max-width:100%;overflow-x:hidden}
     height:84px;
   }
 }
+
+
+/* ===== Caras dinámicas por score ===== */
+.score-face{
+  --face-bg:#c7c9cc;
+  position:relative;
+  width:56px;
+  height:56px;
+  flex:0 0 56px;
+  border-radius:50%;
+  background:var(--face-bg);
+  box-shadow:
+    inset 0 -3px 0 rgba(0,0,0,.06),
+    0 5px 14px rgba(20,25,38,.10);
+}
+.score-face.face-c1{--face-bg:#df2d38}
+.score-face.face-c2{--face-bg:#ff7b22}
+.score-face.face-c3{--face-bg:#f5b82e}
+.score-face.face-c4{--face-bg:#99c83f}
+.score-face.face-c5{--face-bg:#11a855}
+.score-face.face-unrated{--face-bg:#bfc3c7}
+
+.face-eye{
+  position:absolute;
+  top:17px;
+  width:8px;
+  height:9px;
+  border-radius:50%;
+  background:#fff;
+}
+.face-eye-left{left:14px}
+.face-eye-right{right:14px}
+.face-mouth{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  display:block;
+}
+
+/* Muy bajo: tristeza marcada */
+.score-face.face-c1 .face-eye-left{transform:rotate(10deg)}
+.score-face.face-c1 .face-eye-right{transform:rotate(-10deg)}
+.score-face.face-c1 .face-mouth{
+  bottom:10px;
+  width:25px;
+  height:12px;
+  border-top:4px solid #fff;
+  border-radius:50% 50% 0 0;
+}
+/* Bajo: triste */
+.score-face.face-c2 .face-mouth{
+  bottom:11px;
+  width:23px;
+  height:10px;
+  border-top:4px solid #fff;
+  border-radius:50% 50% 0 0;
+}
+/* Medio: neutro */
+.score-face.face-c3 .face-mouth,
+.score-face.face-unrated .face-mouth{
+  bottom:14px;
+  width:22px;
+  height:4px;
+  border-radius:999px;
+  background:#fff;
+}
+/* Bueno: sonrisa */
+.score-face.face-c4 .face-mouth{
+  bottom:10px;
+  width:24px;
+  height:13px;
+  border-bottom:4px solid #fff;
+  border-radius:0 0 50% 50%;
+}
+/* Excelente: sonrisa amplia */
+.score-face.face-c5 .face-mouth{
+  bottom:9px;
+  width:27px;
+  height:15px;
+  border-radius:0 0 18px 18px;
+  background:#fff;
+}
+.score-face.face-c5 .face-mouth:after{
+  content:"";
+  position:absolute;
+  left:5px;
+  right:5px;
+  top:0;
+  height:4px;
+  background:rgba(11,18,32,.20);
+  border-radius:0 0 8px 8px;
+}
+
+/* La cara reemplaza la inicial en la ficha del cliente */
+.pane-client .client-identity .score-face{
+  width:58px;
+  height:58px;
+  flex-basis:58px;
+  margin:0 auto 3px;
+}
+.pane-client .client-identity .score-face .face-eye{
+  top:18px;
+}
+.pane-client .client-identity .score-face .face-eye-left{left:15px}
+.pane-client .client-identity .score-face .face-eye-right{right:15px}
+
+/* ===== Revelado animado al terminar el reporte ===== */
+.workspace{
+  position:relative;
+}
+.workspace.revealing .workspace-meta,
+.workspace.revealing .analysis-columns{
+  opacity:0;
+  visibility:hidden;
+}
+.score-reveal-overlay{
+  position:absolute;
+  inset:0;
+  z-index:120;
+  display:grid;
+  place-items:center;
+  background:rgba(251,250,247,.985);
+}
+.score-reveal-card{
+  display:grid;
+  justify-items:center;
+  gap:18px;
+  text-align:center;
+}
+.score-face.score-face-reveal{
+  width:126px;
+  height:126px;
+  flex-basis:126px;
+  box-shadow:
+    inset 0 -5px 0 rgba(0,0,0,.07),
+    0 18px 46px rgba(20,25,38,.15);
+}
+.score-face-reveal .face-eye{
+  top:38px;
+  width:18px;
+  height:20px;
+}
+.score-face-reveal .face-eye-left{left:31px}
+.score-face-reveal .face-eye-right{right:31px}
+.score-face-reveal.face-c1 .face-mouth{
+  bottom:22px;width:54px;height:25px;border-top-width:8px
+}
+.score-face-reveal.face-c2 .face-mouth{
+  bottom:24px;width:50px;height:22px;border-top-width:8px
+}
+.score-face-reveal.face-c3 .face-mouth,
+.score-face-reveal.face-unrated .face-mouth{
+  bottom:31px;width:48px;height:8px
+}
+.score-face-reveal.face-c4 .face-mouth{
+  bottom:21px;width:52px;height:29px;border-bottom-width:8px
+}
+.score-face-reveal.face-c5 .face-mouth{
+  bottom:19px;width:58px;height:34px;border-radius:0 0 32px 32px
+}
+.score-face-reveal.face-c5 .face-mouth:after{
+  left:10px;right:10px;height:7px
+}
+.score-reveal-overlay.is-animating .score-face-reveal{
+  animation:scoreFaceDoubleZoom 1.55s cubic-bezier(.22,.7,.22,1) both;
+}
+.score-reveal-overlay.is-leaving{
+  animation:scoreRevealFade .28s ease forwards;
+}
+.score-reveal-copy{
+  display:grid;
+  gap:4px;
+}
+.score-reveal-copy span{
+  font-size:.62rem;
+  letter-spacing:.17em;
+  font-weight:800;
+  color:var(--gold);
+}
+.score-reveal-copy b{
+  font-size:1.12rem;
+  color:var(--ink);
+}
+@keyframes scoreFaceDoubleZoom{
+  0%{transform:scale(.72);opacity:0}
+  16%{transform:scale(1.18);opacity:1}
+  34%{transform:scale(.90)}
+  52%{transform:scale(1.14)}
+  70%{transform:scale(.96)}
+  100%{transform:scale(1)}
+}
+@keyframes scoreRevealFade{
+  from{opacity:1}
+  to{opacity:0}
+}
+
+@media(max-width:600px){
+  .score-face.score-face-reveal{
+    width:108px;height:108px;flex-basis:108px
+  }
+  .score-face-reveal .face-eye{top:33px;width:15px;height:17px}
+  .score-face-reveal .face-eye-left{left:27px}
+  .score-face-reveal .face-eye-right{right:27px}
+}
