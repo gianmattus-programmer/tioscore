@@ -390,6 +390,18 @@ const dz=$('#dropZone');
 ['dragleave','drop'].forEach(ev=>dz?.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag')}));
 dz?.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f?.type==='application/pdf')processPdf(f)});
 
+async function postAnalysis(text,filename,extractionMeta,mode='full'){
+ const r=await fetch('/api/analyze',{
+  method:'POST',
+  headers:{'content-type':'application/json'},
+  credentials:'include',
+  body:JSON.stringify({filename,text,extractionMeta,mode})
+ });
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(d.message||d.error||'No se pudo analizar el reporte');
+ return d;
+}
+
 async function processPdf(file,{background=false}={}){
  state.processUi=background?'drawer':'initial';
  if(background){
@@ -397,88 +409,148 @@ async function processPdf(file,{background=false}={}){
  }else{
   $('#uploadState').classList.remove('hidden');
   updateProcessTitle('Leyendo '+file.name);
-  updateProcessDetail('Revisando texto digital y páginas escaneadas…');
+  updateProcessDetail('Buscando texto y preparando lectura rápida…');
  }
+
+ let quickStarted=false,quickShown=false,fullLoaded=false;
+ const startQuick=(partialText)=>{
+  if(quickStarted||String(partialText||'').length<100)return;
+  quickStarted=true;
+  postAnalysis(partialText,file.name,{mode:'partial'},'quick')
+   .then(d=>{
+    if(fullLoaded||!d?.analysis)return;
+    quickShown=true;
+    loadQuickAnalysis(d.analysis,file.name);
+   })
+   .catch(()=>{});
+ };
+
  try{
-  const extracted=await extractPdfHybrid(file);
+  const extracted=await extractPdfHybrid(file,{onQuickText:startQuick});
   if(extracted.text.length<100)throw new Error('No se logró obtener suficiente contenido legible del reporte.');
+
+  if(!quickStarted)startQuick(extracted.text);
+
   const mode=extracted.visualPages>0
-    ? 'Lectura híbrida: '+extracted.digitalPages+' páginas digitales y '+extracted.visualPages+' páginas visuales.'
-    : 'Lectura digital completada.';
-  updateProcessDetail(mode+' Interpretando créditos, morosidad, entidades y comportamiento…');
-  const r=await fetch('/api/analyze',{
-    method:'POST',
-    headers:{'content-type':'application/json'},
-    credentials:'include',
-    body:JSON.stringify({
-      filename:file.name,
-      text:extracted.text,
-      extractionMeta:{
-        totalPages:extracted.totalPages,
-        digitalPages:extracted.digitalPages,
-        visualPages:extracted.visualPages,
-        mode:extracted.visualPages>0?'hybrid':'digital'
-      }
-    })
-  });
-  const d=await r.json();
-  if(!r.ok)throw new Error(d.message||d.error||'No se pudo analizar el reporte');
+   ? 'Lectura híbrida lista: '+extracted.digitalPages+' digitales y '+extracted.visualPages+' visuales.'
+   : 'Lectura digital lista.';
+  updateProcessTitle('Completando análisis');
+  updateProcessDetail(mode+' Generando tablas, alertas, recomendaciones y gráficos…');
+
+  const d=await postAnalysis(extracted.text,file.name,{
+   totalPages:extracted.totalPages,
+   digitalPages:extracted.digitalPages,
+   visualPages:extracted.visualPages,
+   mode:extracted.visualPages>0?'hybrid':'digital'
+  },'full');
+
+  fullLoaded=true;
   if(!d.analysis.sourceReport)d.analysis.sourceReport={};
   d.analysis.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + visión)':'Texto digital';
   d.analysis.sourceReport.totalPages=extracted.totalPages;
   d.analysis.sourceReport.visualPages=extracted.visualPages;
 
   if(background){
-   updateProcessTitle('Análisis listo');
-   updateProcessDetail('Actualizando la ficha del siguiente cliente…');
+   updateProcessTitle('Análisis completo');
+   updateProcessDetail('La ficha ya está completamente actualizada.');
   }
-  loadAnalysis(d.analysis,false,file.name);
+  loadAnalysis(d.analysis,false,file.name,{skipReveal:quickShown});
   if(background){
    state.drawerProcessing=false;
-   setTimeout(()=>closeNewAnalysisDrawer(true),350);
+   setTimeout(()=>closeNewAnalysisDrawer(true),250);
   }
  }catch(err){
+  fullLoaded=true;
+  if(quickShown){
+   $('#analysisMeta').textContent='Vista rápida · no se pudo completar el análisis';
+  }
   if(background){
-   showDrawerError(err.message);
-  }else{
+   if(quickShown){
+    state.drawerProcessing=false;
+    closeNewAnalysisDrawer(true);
+   }else showDrawerError(err.message);
+  }else if(!quickShown){
    updateProcessTitle('No se pudo completar la lectura');
    updateProcessDetail(err.message);
   }
  }
 }
-async function extractPdfHybrid(file){
+
+function quickTextReady(text=''){
+ const s=String(text);
+ if(s.length<350)return false;
+ const hasIdentity=/(?:dni|documento|titular|nombre|ruc)/i.test(s);
+ const hasScore=/(?:score|experian|puntaje|calificaci[oó]n)/i.test(s);
+ return (hasIdentity&&hasScore)||s.length>=6000;
+}
+
+async function parallelMapLimit(items,limit,worker){
+ if(!items.length)return;
+ let next=0;
+ const count=Math.min(Math.max(1,limit),items.length);
+ const runners=Array.from({length:count},async()=>{
+  while(true){
+   const i=next++;
+   if(i>=items.length)return;
+   await worker(items[i],i);
+  }
+ });
+ await Promise.all(runners);
+}
+
+async function extractPdfHybrid(file,{onQuickText}={}){
  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
  const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
  const totalPages=Math.min(pdf.numPages,60);
- const pages=[];
- let digitalPages=0,visualPages=0;
+ const pages=Array(totalPages).fill('');
+ const visualJobs=[];
+ let digitalPages=0,visualPages=0,quickTriggered=false;
+
+ const maybeStartQuick=()=>{
+  if(quickTriggered||typeof onQuickText!=='function')return;
+  const partial=pages.filter(Boolean).join('\n\n');
+  if(!quickTextReady(partial))return;
+  quickTriggered=true;
+  Promise.resolve(onQuickText(partial.slice(0,90000))).catch(()=>{});
+ };
 
  for(let i=1;i<=totalPages;i++){
-  updateProcessDetail('Página '+i+' de '+totalPages+' · detectando método de lectura…');
+  updateProcessDetail('Página '+i+' de '+totalPages+' · detectando texto…');
   const page=await pdf.getPage(i);
   const content=await page.getTextContent();
   const digitalText=content.items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
 
   if(isDigitalTextUseful(digitalText,content.items)){
-    digitalPages++;
-    pages.push('--- PÁGINA '+i+' · TEXTO DIGITAL ---\n'+digitalText);
-    continue;
+   digitalPages++;
+   pages[i-1]='--- PÁGINA '+i+' · TEXTO DIGITAL ---\n'+digitalText;
+   maybeStartQuick();
+  }else{
+   visualPages++;
+   visualJobs.push({page,pageNumber:i,index:i-1});
   }
-
-  visualPages++;
-  updateProcessDetail('Página '+i+' de '+totalPages+' · lectura visual con IA…');
-  const image=await renderPageForVision(page);
-  const visualText=await readPageVisually(image,i,file.name);
-  pages.push('--- PÁGINA '+i+' · LECTURA VISUAL ---\n'+visualText);
  }
 
- return {
-  text:pages.join('\n\n').slice(0,300000),
-  totalPages,
-  digitalPages,
-  visualPages
- };
+ if(visualJobs.length){
+  let done=0;
+  updateProcessDetail('Lectura visual: procesando hasta 3 páginas en paralelo…');
+  await parallelMapLimit(visualJobs,3,async job=>{
+   const image=await renderPageForVision(job.page);
+   const visualText=await readPageVisually(image,job.pageNumber,file.name);
+   pages[job.index]='--- PÁGINA '+job.pageNumber+' · LECTURA VISUAL ---\n'+visualText;
+   done++;
+   updateProcessDetail('Lectura visual '+done+' de '+visualPages+' · hasta 3 páginas en paralelo…');
+   maybeStartQuick();
+  });
+ }
+
+ const text=pages.filter(Boolean).join('\n\n').slice(0,240000);
+ if(!quickTriggered&&typeof onQuickText==='function'&&text.length>=100){
+  quickTriggered=true;
+  Promise.resolve(onQuickText(text.slice(0,90000))).catch(()=>{});
+ }
+
+ return {text,totalPages,digitalPages,visualPages};
 }
 
 function isDigitalTextUseful(text,items){
@@ -490,7 +562,7 @@ function isDigitalTextUseful(text,items){
 
 async function renderPageForVision(page){
  const base=page.getViewport({scale:1});
- const targetWidth=base.width>0?Math.min(1350,Math.max(980,base.width*1.45)):1200;
+ const targetWidth=base.width>0?Math.min(1250,Math.max(900,base.width*1.35)):1100;
  const scale=targetWidth/base.width;
  const viewport=page.getViewport({scale});
  const canvas=document.createElement('canvas');
@@ -501,21 +573,21 @@ async function renderPageForVision(page){
  ctx.fillRect(0,0,canvas.width,canvas.height);
  await page.render({canvasContext:ctx,viewport}).promise;
 
- let quality=.76;
+ let quality=.70;
  let image=canvas.toDataURL('image/jpeg',quality);
- while(image.length>2_700_000&&quality>.42){
+ while(image.length>2_100_000&&quality>.46){
   quality-=.08;
   image=canvas.toDataURL('image/jpeg',quality);
  }
- if(image.length>3_100_000){
+ if(image.length>2_350_000){
   const shrink=document.createElement('canvas');
-  const ratio=Math.sqrt(2_500_000/image.length);
-  shrink.width=Math.max(700,Math.floor(canvas.width*ratio));
-  shrink.height=Math.max(900,Math.floor(canvas.height*ratio));
+  const ratio=Math.sqrt(1_900_000/image.length);
+  shrink.width=Math.max(760,Math.floor(canvas.width*ratio));
+  shrink.height=Math.max(980,Math.floor(canvas.height*ratio));
   const sctx=shrink.getContext('2d',{alpha:false});
   sctx.fillStyle='#fff';sctx.fillRect(0,0,shrink.width,shrink.height);
   sctx.drawImage(canvas,0,0,shrink.width,shrink.height);
-  image=shrink.toDataURL('image/jpeg',.68);
+  image=shrink.toDataURL('image/jpeg',.64);
  }
  return image;
 }
@@ -532,7 +604,40 @@ async function readPageVisually(image,page,filename){
  return String(d.text||'').trim()||'[Página sin contenido legible]';
 }
 
-function loadAnalysis(a,isDemo=false,filename=''){
+function loadQuickAnalysis(a,filename=''){
+ state.analysis=normalize(a);const x=state.analysis;
+ $('#uploadPanel').classList.add('hidden');$('#resultPanel').classList.remove('hidden');
+ $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
+ $('#analysisMeta').textContent='Vista rápida · completando análisis…';
+ $('#confidenceValue').textContent='Lectura preliminar '+(x.confidence||0)+'%';
+ const visibleName=firstName(x.client.name||'Cliente');
+ $('#clientName').textContent=visibleName;
+ $('#clientSubline').textContent=[x.client.document||'Documento protegido',x.client.age,x.client.reportDate].filter(Boolean).join(' · ');
+ const scoreInfo=renderScoreGauge(x.score);
+ setScoreFace($('#clientScoreFace'),x.score);
+ $('#riskBadge').textContent=scoreInfo.category;
+ $('#scoreDescription').textContent=x.scoreDescription||'Completando interpretación del reporte…';
+ $('#debtDelta').textContent='Completando evolución de deuda…';
+ $('#executiveSummary').textContent=x.summary||'Completando lectura financiera…';
+ $('#summaryTags').innerHTML=x.tags.map(t=>'<span>'+esc(t)+'</span>').join('');
+ $('#alertsGrid').innerHTML='<div class="empty-line">Completando alertas y fortalezas…</div>';
+ $('#recommendations').innerHTML='<div class="empty-line" style="color:#cbd2cc">Preparando recomendaciones…</div>';
+ $('#closingHeadline').textContent='Análisis en curso';
+ $('#closingText').textContent='La información detallada aparecerá automáticamente al terminar.';
+ $('#checklist').innerHTML='';
+ $('#checkProgress').textContent='0 / 0';
+ renderData(x.raw);
+ $('#entitiesTable').innerHTML='<div class="empty-line" style="padding:10px">Completando entidades…</div>';
+ $('#obligationsTable').innerHTML='<div class="empty-line" style="padding:10px">Completando obligaciones…</div>';
+ $('#inquiriesList').innerHTML='<div class="empty-line">Completando consultas…</div>';
+ $('#reportSections').innerHTML='<div class="empty-line">Completando información adicional…</div>';
+ $('#metricsGrid').innerHTML='<div class="empty-line">Completando cifras clave…</div>';
+ renderReportCharts(x);
+ renderCoverage(x);
+ if(Number(x.score)>0)runScoreReveal(x.score);
+}
+
+function loadAnalysis(a,isDemo=false,filename='',options={}){
  state.analysis=normalize(a);const x=state.analysis;
  $('#uploadPanel').classList.add('hidden');$('#resultPanel').classList.remove('hidden');
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
@@ -554,7 +659,7 @@ function loadAnalysis(a,isDemo=false,filename=''){
  renderMetrics(x.metrics);renderReportCharts(x);renderCoverage(x);
  $('#advisorNotes').value=x.notes||'';
  if(!isDemo)saveToHistory(filename);
- runScoreReveal(x.score);
+ if(!options.skipReveal)runScoreReveal(x.score);
 }
 function getScoreBand(score){
  const s=Number(score)||0;
