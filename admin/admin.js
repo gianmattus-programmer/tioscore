@@ -152,11 +152,19 @@ function updateSidebarToggle(){
 
 function openNewAnalysisDrawer(){
  const drawer=$('#newAnalysisDrawer');
+ const rightScroll=$('.pane-insights .pane-scroll');
  if(!drawer)return;
+ if(rightScroll&&drawer.parentElement!==rightScroll){
+  rightScroll.prepend(drawer);
+ }
+ drawer.classList.add('drawer-in-right-pane');
  drawer.classList.remove('hidden');
  drawer.setAttribute('aria-hidden','false');
  showDrawerReady();
  $('#newPdfInput').value='';
+ if(rightScroll){
+  rightScroll.scrollTo({top:0,behavior:'smooth'});
+ }
  setTimeout(()=>$('#newDropZone')?.focus?.(),20);
 }
 function closeNewAnalysisDrawer(force=false){
