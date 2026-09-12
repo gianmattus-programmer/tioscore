@@ -60,6 +60,52 @@
         </div>
       </header>
 
+      <aside id="newAnalysisDrawer" class="new-analysis-drawer hidden admin-only" aria-hidden="true">
+        <div class="drawer-head">
+          <div>
+            <span class="eyebrow">SIGUIENTE PERSONA</span>
+            <h2>Nuevo análisis</h2>
+          </div>
+          <button id="closeNewAnalysisDrawer" class="drawer-close" type="button" aria-label="Cerrar">×</button>
+        </div>
+
+        <div id="newUploadReady" class="drawer-upload-ready">
+          <div class="drawer-pdf-mark">PDF</div>
+          <h3>Añade el siguiente reporte</h3>
+          <p>El cliente actual seguirá visible en la columna central hasta que el nuevo análisis esté completamente listo.</p>
+          <label class="btn primary drawer-file-btn">Seleccionar PDF
+            <input id="newPdfInput" type="file" accept="application/pdf">
+          </label>
+          <div id="newDropZone" class="drawer-drop-zone">
+            <b>Arrastra el PDF aquí</b>
+            <small>Sentinel digital, escaneado o mixto</small>
+          </div>
+        </div>
+
+        <div id="newUploadProcessing" class="drawer-processing hidden" aria-live="polite">
+          <div class="analysis-loader-spectrum" aria-hidden="true">
+            <i class="loader-red"></i>
+            <i class="loader-orange"></i>
+            <i class="loader-yellow"></i>
+            <i class="loader-lightgreen"></i>
+            <i class="loader-green"></i>
+          </div>
+          <div class="drawer-processing-copy">
+            <span class="eyebrow">ANALIZANDO</span>
+            <h3 id="drawerUploadTitle">Preparando reporte…</h3>
+            <p id="drawerUploadDetail">Leyendo el documento.</p>
+          </div>
+          <div class="drawer-progress-line"><i></i></div>
+          <small class="drawer-live-note">La vista del cliente actual permanece sin cambios.</small>
+        </div>
+
+        <div id="newUploadError" class="drawer-error hidden">
+          <b>No se pudo completar el análisis</b>
+          <p id="drawerErrorText"></p>
+          <button id="drawerRetryBtn" class="btn ghost full" type="button">Intentar con otro PDF</button>
+        </div>
+      </aside>
+
       <section id="analysisView" class="view">
         <section id="uploadPanel" class="upload-card">
           <div class="upload-icon">PDF</div>

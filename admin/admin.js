@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const state={analysis:null,editing:false,clientMode:false,history:JSON.parse(localStorage.getItem('ts-admin-history')||'[]')};
+const state={analysis:null,editing:false,clientMode:false,drawerProcessing:false,processUi:'initial',history:JSON.parse(localStorage.getItem('ts-admin-history')||'[]')};
 
 const demo={
  sourceReport:{provider:'Sentinel',type:'Reporte crediticio integral',reportDate:'11/09/2026',periodCovered:'2023–2026',sectionsDetected:9,sectionsExpected:10},
@@ -119,8 +119,21 @@ $('#loginForm')?.addEventListener('submit',async e=>{
 $('#logoutBtn')?.addEventListener('click',async()=>{await fetch('/api/admin-logout',{method:'POST',credentials:'include'});location.reload()});
 $$('.nav-item').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
 function switchView(v){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.view===v));$$('.view').forEach(x=>x.classList.add('hidden'));$('#'+v+'View')?.classList.remove('hidden');if(v==='history')renderHistory()}
-$('#newAnalysisBtn')?.addEventListener('click',resetAnalysis);$('#historyNewBtn')?.addEventListener('click',()=>{switchView('analysis');resetAnalysis()});
-function resetAnalysis(){switchView('analysis');state.analysis=null;$('#resultPanel').classList.add('hidden');$('#uploadPanel').classList.remove('hidden');$('#pdfInput').value='';$('#uploadState').classList.add('hidden')}
+$('#newAnalysisBtn')?.addEventListener('click',()=>{
+ switchView('analysis');
+ if(state.analysis&&!$('#resultPanel').classList.contains('hidden'))openNewAnalysisDrawer();
+ else resetAnalysis();
+});
+$('#historyNewBtn')?.addEventListener('click',()=>{switchView('analysis');resetAnalysis()});
+function resetAnalysis(){
+ closeNewAnalysisDrawer(true);
+ switchView('analysis');
+ state.analysis=null;
+ $('#resultPanel').classList.add('hidden');
+ $('#uploadPanel').classList.remove('hidden');
+ $('#pdfInput').value='';
+ $('#uploadState').classList.add('hidden');
+}
 $('#demoBtn')?.addEventListener('click',()=>loadAnalysis(structuredClone(demo),true));
 
 const sidebarCollapsed=localStorage.getItem('ts-sidebar-collapsed')==='1';
@@ -137,23 +150,100 @@ function updateSidebarToggle(){
  b.textContent=document.body.classList.contains('sidebar-collapsed')?'Mostrar menú':'Ocultar menú';
 }
 
+function openNewAnalysisDrawer(){
+ const drawer=$('#newAnalysisDrawer');
+ if(!drawer)return;
+ drawer.classList.remove('hidden');
+ drawer.setAttribute('aria-hidden','false');
+ showDrawerReady();
+ $('#newPdfInput').value='';
+ setTimeout(()=>$('#newDropZone')?.focus?.(),20);
+}
+function closeNewAnalysisDrawer(force=false){
+ if(state.drawerProcessing&&!force)return;
+ const drawer=$('#newAnalysisDrawer');
+ if(!drawer)return;
+ drawer.classList.add('hidden');
+ drawer.setAttribute('aria-hidden','true');
+ if(force)state.drawerProcessing=false;
+}
+function showDrawerReady(){
+ state.drawerProcessing=false;
+ $('#newUploadReady')?.classList.remove('hidden');
+ $('#newUploadProcessing')?.classList.add('hidden');
+ $('#newUploadError')?.classList.add('hidden');
+ $('#closeNewAnalysisDrawer').disabled=false;
+}
+function showDrawerProcessing(file){
+ state.drawerProcessing=true;
+ $('#newUploadReady')?.classList.add('hidden');
+ $('#newUploadProcessing')?.classList.remove('hidden');
+ $('#newUploadError')?.classList.add('hidden');
+ $('#closeNewAnalysisDrawer').disabled=true;
+ $('#drawerUploadTitle').textContent='Leyendo '+file.name;
+ $('#drawerUploadDetail').textContent='Revisando el reporte sin interrumpir la vista del cliente actual…';
+}
+function showDrawerError(message){
+ state.drawerProcessing=false;
+ $('#newUploadReady')?.classList.add('hidden');
+ $('#newUploadProcessing')?.classList.add('hidden');
+ $('#newUploadError')?.classList.remove('hidden');
+ $('#drawerErrorText').textContent=message||'Ocurrió un error.';
+ $('#closeNewAnalysisDrawer').disabled=false;
+}
+function updateProcessTitle(text){
+ if(state.processUi==='drawer')$('#drawerUploadTitle').textContent=text;
+ else $('#uploadTitle').textContent=text;
+}
+function updateProcessDetail(text){
+ if(state.processUi==='drawer')$('#drawerUploadDetail').textContent=text;
+ else $('#uploadDetail').textContent=text;
+}
+$('#closeNewAnalysisDrawer')?.addEventListener('click',()=>closeNewAnalysisDrawer());
+$('#drawerRetryBtn')?.addEventListener('click',showDrawerReady);
+$('#newPdfInput')?.addEventListener('change',e=>{
+ const file=e.target.files[0];
+ if(file)processPdf(file,{background:true});
+});
+const newDz=$('#newDropZone');
+newDz?.setAttribute('tabindex','0');
+newDz?.addEventListener('click',()=>$('#newPdfInput')?.click());
+['dragenter','dragover'].forEach(ev=>newDz?.addEventListener(ev,e=>{
+ e.preventDefault();
+ if(!state.drawerProcessing)newDz.classList.add('drag');
+}));
+['dragleave','drop'].forEach(ev=>newDz?.addEventListener(ev,e=>{
+ e.preventDefault();
+ newDz.classList.remove('drag');
+}));
+newDz?.addEventListener('drop',e=>{
+ if(state.drawerProcessing)return;
+ const file=e.dataTransfer.files[0];
+ if(file?.type==='application/pdf')processPdf(file,{background:true});
+});
+
 $('#pdfInput')?.addEventListener('change',e=>e.target.files[0]&&processPdf(e.target.files[0]));
 const dz=$('#dropZone');
 ['dragenter','dragover'].forEach(ev=>dz?.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag')}));
 ['dragleave','drop'].forEach(ev=>dz?.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag')}));
 dz?.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f?.type==='application/pdf')processPdf(f)});
 
-async function processPdf(file){
- $('#uploadState').classList.remove('hidden');
- $('#uploadTitle').textContent='Leyendo '+file.name;
- $('#uploadDetail').textContent='Revisando texto digital y páginas escaneadas…';
+async function processPdf(file,{background=false}={}){
+ state.processUi=background?'drawer':'initial';
+ if(background){
+  showDrawerProcessing(file);
+ }else{
+  $('#uploadState').classList.remove('hidden');
+  updateProcessTitle('Leyendo '+file.name);
+  updateProcessDetail('Revisando texto digital y páginas escaneadas…');
+ }
  try{
   const extracted=await extractPdfHybrid(file);
   if(extracted.text.length<100)throw new Error('No se logró obtener suficiente contenido legible del reporte.');
   const mode=extracted.visualPages>0
-    ? 'Lectura híbrida completada: '+extracted.digitalPages+' páginas digitales y '+extracted.visualPages+' páginas visuales.'
+    ? 'Lectura híbrida: '+extracted.digitalPages+' páginas digitales y '+extracted.visualPages+' páginas visuales.'
     : 'Lectura digital completada.';
-  $('#uploadDetail').textContent=mode+' Interpretando créditos, morosidad, entidades y comportamiento…';
+  updateProcessDetail(mode+' Interpretando créditos, morosidad, entidades y comportamiento…');
   const r=await fetch('/api/analyze',{
     method:'POST',
     headers:{'content-type':'application/json'},
@@ -175,13 +265,25 @@ async function processPdf(file){
   d.analysis.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + visión)':'Texto digital';
   d.analysis.sourceReport.totalPages=extracted.totalPages;
   d.analysis.sourceReport.visualPages=extracted.visualPages;
+
+  if(background){
+   updateProcessTitle('Análisis listo');
+   updateProcessDetail('Actualizando la ficha del siguiente cliente…');
+  }
   loadAnalysis(d.analysis,false,file.name);
+  if(background){
+   state.drawerProcessing=false;
+   setTimeout(()=>closeNewAnalysisDrawer(true),350);
+  }
  }catch(err){
-  $('#uploadTitle').textContent='No se pudo completar la lectura';
-  $('#uploadDetail').textContent=err.message;
+  if(background){
+   showDrawerError(err.message);
+  }else{
+   updateProcessTitle('No se pudo completar la lectura');
+   updateProcessDetail(err.message);
+  }
  }
 }
-
 async function extractPdfHybrid(file){
  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
@@ -191,7 +293,7 @@ async function extractPdfHybrid(file){
  let digitalPages=0,visualPages=0;
 
  for(let i=1;i<=totalPages;i++){
-  $('#uploadDetail').textContent='Página '+i+' de '+totalPages+' · detectando método de lectura…';
+  updateProcessDetail('Página '+i+' de '+totalPages+' · detectando método de lectura…');
   const page=await pdf.getPage(i);
   const content=await page.getTextContent();
   const digitalText=content.items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
@@ -203,7 +305,7 @@ async function extractPdfHybrid(file){
   }
 
   visualPages++;
-  $('#uploadDetail').textContent='Página '+i+' de '+totalPages+' · lectura visual con IA…';
+  updateProcessDetail('Página '+i+' de '+totalPages+' · lectura visual con IA…');
   const image=await renderPageForVision(page);
   const visualText=await readPageVisually(image,i,file.name);
   pages.push('--- PÁGINA '+i+' · LECTURA VISUAL ---\n'+visualText);

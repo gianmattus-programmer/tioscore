@@ -437,3 +437,163 @@ body.client-mode .sidebar{display:none}body.client-mode .main{margin-left:0}body
   .pie-chart-card{grid-template-columns:1fr}
   .pie-visual{width:126px;height:126px}
 }
+
+
+/* ===== Nuevo análisis sin interrumpir el live ===== */
+.new-analysis-drawer{
+  position:fixed;
+  top:96px;
+  left:240px;
+  width:min(390px,calc(100vw - 280px));
+  max-height:calc(100dvh - 116px);
+  overflow:auto;
+  z-index:80;
+  background:#fff;
+  border:1px solid var(--line-strong);
+  border-radius:16px;
+  box-shadow:0 24px 70px rgba(20,25,38,.18);
+  padding:18px;
+}
+body.sidebar-collapsed .new-analysis-drawer{left:20px}
+.drawer-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  padding-bottom:14px;
+  border-bottom:1px solid var(--line)
+}
+.drawer-head h2{
+  margin:3px 0 0;
+  color:var(--ink);
+  font-size:1.18rem
+}
+.drawer-close{
+  width:34px;height:34px;border-radius:50%;
+  border:1px solid var(--line-strong);
+  background:#fff;color:var(--ink);
+  display:grid;place-items:center;
+  cursor:pointer;font-size:1.3rem;line-height:1
+}
+.drawer-close:disabled{opacity:.35;cursor:not-allowed}
+.drawer-upload-ready{
+  display:grid;
+  justify-items:center;
+  text-align:center;
+  gap:10px;
+  padding:24px 4px 4px
+}
+.drawer-pdf-mark{
+  width:58px;height:58px;border-radius:14px;
+  background:var(--ink);color:var(--gold-light);
+  display:grid;place-items:center;
+  font-weight:900;letter-spacing:.08em
+}
+.drawer-upload-ready h3{
+  margin:2px 0 0;color:var(--ink);font-size:1rem
+}
+.drawer-upload-ready p{
+  margin:0;color:var(--muted);font-size:.76rem;line-height:1.55
+}
+.drawer-file-btn{
+  width:100%;
+  margin-top:4px;
+  text-align:center
+}
+.drawer-file-btn input{display:none}
+.drawer-drop-zone{
+  width:100%;
+  margin-top:2px;
+  padding:18px 12px;
+  border:1px dashed var(--line-strong);
+  border-radius:10px;
+  background:#fcfbf8;
+  display:grid;gap:3px;
+  color:var(--ink);
+  cursor:pointer
+}
+.drawer-drop-zone small{color:var(--muted);font-size:.68rem}
+.drawer-drop-zone.drag{
+  border-color:var(--gold);
+  background:#fff8e8
+}
+
+.drawer-processing{
+  padding:26px 4px 8px;
+  display:grid;
+  justify-items:center;
+  text-align:center
+}
+.analysis-loader-spectrum{
+  width:250px;
+  height:118px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  gap:8px;
+  margin-bottom:4px
+}
+.analysis-loader-spectrum i{
+  display:block;
+  width:38px;
+  border-radius:24px 24px 8px 8px;
+  transform-origin:50% 100%;
+  animation:scorePulse 1.15s ease-in-out infinite;
+  box-shadow:0 8px 18px rgba(20,25,38,.06)
+}
+.analysis-loader-spectrum i:nth-child(1){height:70px;animation-delay:0s}
+.analysis-loader-spectrum i:nth-child(2){height:88px;animation-delay:.12s}
+.analysis-loader-spectrum i:nth-child(3){height:102px;animation-delay:.24s}
+.analysis-loader-spectrum i:nth-child(4){height:88px;animation-delay:.36s}
+.analysis-loader-spectrum i:nth-child(5){height:70px;animation-delay:.48s}
+.loader-red{background:#c91f26}
+.loader-orange{background:#ff8a16}
+.loader-yellow{background:#f3c400}
+.loader-lightgreen{background:#8bc63f}
+.loader-green{background:#0aa64f}
+@keyframes scorePulse{
+  0%,100%{transform:scaleY(.76);opacity:.42}
+  50%{transform:scaleY(1.08);opacity:1}
+}
+.drawer-processing-copy h3{
+  margin:5px 0 4px;color:var(--ink);font-size:1rem
+}
+.drawer-processing-copy p{
+  margin:0;color:var(--muted);font-size:.74rem;line-height:1.5
+}
+.drawer-progress-line{
+  width:100%;height:4px;
+  margin:18px 0 8px;
+  border-radius:999px;
+  background:#ece9e2;
+  overflow:hidden
+}
+.drawer-progress-line i{
+  display:block;width:38%;height:100%;
+  border-radius:999px;
+  background:linear-gradient(90deg,#c91f26,#ff8a16,#f3c400,#8bc63f,#0aa64f);
+  animation:drawerProgress 1.6s ease-in-out infinite
+}
+@keyframes drawerProgress{
+  0%{transform:translateX(-110%)}
+  100%{transform:translateX(290%)}
+}
+.drawer-live-note{
+  color:#7d857f;font-size:.64rem
+}
+.drawer-error{
+  padding:22px 2px 4px
+}
+.drawer-error b{color:var(--red);font-size:.85rem}
+.drawer-error p{color:var(--muted);font-size:.74rem;line-height:1.5}
+
+@media(max-width:980px){
+  .new-analysis-drawer{
+    left:12px!important;
+    right:12px;
+    top:auto;
+    bottom:12px;
+    width:auto;
+    max-height:78dvh
+  }
+}
