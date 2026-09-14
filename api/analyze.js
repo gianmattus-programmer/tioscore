@@ -10,6 +10,105 @@ function authed(req){
 }
 function outputText(data){if(typeof data.output_text==='string'&&data.output_text)return data.output_text;return (data.output||[]).flatMap(v=>v.content||[]).map(v=>v.text||'').join('')}
 function cleanJson(s){return String(s||'').trim().replace(/^\`\`\`json\s*/i,'').replace(/\`\`\`$/,'').trim()}
+
+function firstName(v=''){
+ const s=String(v||'').trim().replace(/\s+/g,' ');
+ return s?s.split(' ')[0]:'Cliente';
+}
+function cap(text,patterns){
+ for(const re of patterns){const m=String(text||'').match(re);if(m&&m[1]!=null)return String(m[1]).trim()}
+ return '';
+}
+function moneyNumber(v){
+ const s=String(v||'').replace(/[^\d,.-]/g,'').trim();if(!s)return null;
+ let n=s;
+ if(s.includes(',')&&s.includes('.'))n=s.lastIndexOf('.')>s.lastIndexOf(',')?s.replace(/,/g,''):s.replace(/\./g,'').replace(',','.');
+ else if(s.includes(','))n=s.replace(',','.');
+ const x=Number(n);return Number.isFinite(x)?x:null;
+}
+function money(v){const n=moneyNumber(v);return n==null?'':'S/ '+n.toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function scoreBand(score){
+ const s=Number(score)||0;
+ if(s>=877)return ['EXCELENTE','Excelente Puntaje'];
+ if(s>=722)return ['BUENO','Buen Puntaje'];
+ if(s>=598)return ['REGULAR','Puntaje medio'];
+ if(s>=477)return ['ALERTA','Puntaje Bajo'];
+ if(s>=1)return ['ALERTA','Puntaje Muy Bajo'];
+ return ['POR REVISAR','Puntaje por revisar'];
+}
+function localFallbackAnalysis(source,filename,meta={}){
+ const text=String(source||'').replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
+ const scoreRaw=cap(text,[
+  /(?:score\s*(?:experian)?|puntaje(?:\s+experian)?)\s*[:\-]?\s*(\d{1,3})\b/i,
+  /\bexperian\b.{0,35}\b(\d{3})\b/i
+ ]);
+ const score=Math.max(0,Math.min(999,Number(scoreRaw)||0));
+ const name=cap(text,[/(?:nombres?\s*(?:y\s*apellidos?)?|titular|cliente)\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ]+){0,4})/i]);
+ const dni=cap(text,[/\bDNI\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{8})\b/i]);
+ const ruc=cap(text,[/\bRUC\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{11})\b/i]);
+ const updated=cap(text,[/(?:informaci[oó]n actualizada(?: al)?|informationUpdated)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i]);
+ const creation=cap(text,[/(?:fecha(?: y hora)? de creaci[oó]n|creationDateTime)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)/i]);
+ const capacity=cap(text,[/(?:capacidad(?: de)? pago(?: mensual)?|capacityOfMonthlyPayment)\s*[:\-]?\s*((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i]);
+ const currentDebt=cap(text,[/(?:deuda vigente\s*(?:SBS\s*\/?\s*Microfinanzas)?|currentDebtSBSMicrofinance|currentDebtQuickQuery)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const overdueDebt=cap(text,[/(?:deuda vencida\s*(?:SBS\s*\/?\s*Microfinanzas)?|overdueDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const overdueDocs=cap(text,[/(?:monto(?: de)? documentos vencidos|overdueDocumentAmount)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const overdueDays=cap(text,[/(?:d[ií]as de vencimiento(?: del documento)?|overdueDocumentDays|visibleBCPOverdueDays)\s*[:\-]?\s*(\d{1,4})/i]);
+ const banked=cap(text,[/bancarizad[oa]\s*[:\-]?\s*(S[IÍ]|NO)\b/i]);
+ const taxDebt=cap(text,[/(?:deuda tributaria|taxDebt)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const laborDebt=cap(text,[/(?:deuda laboral|laborDebt)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const [risk,band]=scoreBand(score);
+ const raw={};
+ const add=(k,v)=>{if(v!==''&&v!=null)raw[k]=String(v)};
+ add('Nombre',firstName(name));
+ add('Documento',(dni||ruc)?'••••••'+String(dni||ruc).slice(-2):'Documento protegido');
+ add('Información actualizada al',updated||creation);
+ add('Score Experian',score||'');
+ add('Nivel del score',band);
+ add('Bancarizado',banked);
+ add('Capacidad de pago mensual',capacity);
+ add('Deuda vigente SBS / Microfinanzas',currentDebt);
+ add('Deuda vencida SBS / Microfinanzas',overdueDebt);
+ add('Monto de documentos vencidos',overdueDocs);
+ add('Días de vencimiento del documento',overdueDays);
+ add('Deuda tributaria',taxDebt);
+ add('Deuda laboral',laborDebt);
+ add('Páginas del reporte',meta.totalPages||'');
+
+ const current=moneyNumber(currentDebt),overdue=moneyNumber(overdueDebt),docs=moneyNumber(overdueDocs);
+ const alerts=[],recommendations=[];
+ if((overdue||0)>0||(docs||0)>0){
+  alerts.push({level:'red',title:'Obligaciones vencidas detectadas',text:'El reporte registra montos vencidos que requieren revisión.'});
+  recommendations.push({title:'Regularizar obligaciones vencidas',text:'Prioriza los saldos vencidos identificados y conserva constancias de pago.',impact:'Prioridad 1'});
+ }
+ if(Number(overdueDays)>0){
+  alerts.push({level:'red',title:'Atraso registrado',text:'Se observan '+Number(overdueDays)+' días de atraso en la información extraída.'});
+ }
+ if(!alerts.length)alerts.push({level:'green',title:'Sin alertas críticas detectadas',text:'Los principales campos extraídos no muestran una alerta explícita.'});
+ if(!recommendations.length)recommendations.push({title:'Mantener pagos puntuales',text:'Conserva el cumplimiento de las obligaciones vigentes y evita atrasos.',impact:'Prioridad 1'});
+ recommendations.push({title:'Verificar actualización',text:'Revisa un reporte posterior para confirmar cualquier regularización.',impact:'Seguimiento'});
+ const metrics=[];
+ if(score)metrics.push({value:String(score),label:'Score Experian'});
+ if(current!=null)metrics.push({value:money(current),label:'Deuda vigente'});
+ if(overdue!=null)metrics.push({value:money(overdue),label:'Deuda vencida',danger:overdue>0});
+ if(docs!=null)metrics.push({value:money(docs),label:'Documentos vencidos',danger:docs>0});
+ if(overdueDays)metrics.push({value:String(overdueDays),label:'Días de atraso',danger:Number(overdueDays)>0});
+ if(capacity)metrics.push({value:capacity,label:'Capacidad de pago'});
+ return {
+  sourceReport:{provider:/\bsentinel\b/i.test(text)?'Sentinel':'Reporte detectado',type:'Reporte crediticio',reportDate:updated||creation||'',periodCovered:'',sectionsDetected:1,sectionsExpected:1,extractionMode:meta.mode||'local',parserMode:'Compatibilidad local sin IA',totalPages:meta.totalPages||''},
+  client:{name:firstName(name),document:(dni||ruc)?'••••••'+String(dni||ruc).slice(-2):'Documento protegido',age:'',reportDate:updated||creation||'',entities:''},
+  score,risk,confidence:Math.max(35,score?65:40),debtChange:0,
+  scoreDescription:score?'El score se encuentra en el rango "'+band+'".':'No se identificó un score explícito con suficiente certeza.',
+  summary:((overdue||0)>0||(docs||0)>0||Number(overdueDays)>0)?'La lectura presenta observaciones que requieren atención antes de asumir nuevas obligaciones.':'La lectura automática no detectó una señal crítica en los campos principales extraídos.',
+  tags:[band],
+  alerts,metrics,debtSeries:[],debtComposition:[],monthlyBehavior:[],entities:[],obligations:[],inquiries:[],
+  recommendations,
+  closing:{headline:'Conclusión de la lectura',text:'Revisa los campos extraídos, regulariza cualquier pendiente y confirma los cambios en un reporte actualizado.'},
+  checklist:['Revisar obligaciones identificadas','Regularizar pendientes si corresponde','Verificar actualización en un nuevo reporte'],
+  raw,
+  reportSections:[{title:'Datos extraídos localmente',items:Object.entries(raw).map(([label,value])=>({label,value}))}],
+  reportCharts:{noteEvolution:[],classificationHistory:[],overdueByType:[],overdueShare:[],currentVsOverdue:[],institutionShare:[]}
+ };
+}
 module.exports=async(req,res)=>{
  res.setHeader('Cache-Control','no-store');
  if(!process.env.ADMIN_PASSWORD||!process.env.ADMIN_SESSION_SECRET)return res.status(503).json({error:'config_missing'});
@@ -76,10 +175,9 @@ ${payload}`;
  }
 
  if(mode!=='interpret'){
-  return res.status(410).json({
-   error:'full_analysis_disabled',
-   message:'El análisis completo del PDF con IA está desactivado para evitar consumo alto de tokens. Usa el parser/OCR local y la interpretación estructurada.'
-  });
+  if(text.length<100)return res.status(400).json({error:'pdf_without_text',message:'El PDF no contiene suficiente texto legible.'});
+  const analysis=localFallbackAnalysis(text,filename,extractionMeta);
+  return res.status(200).json({analysis,localFallback:true,aiUsed:false});
  }
 
  if(text.length<100)return res.status(400).json({error:'pdf_without_text',message:'El PDF no contiene suficiente texto digital para esta ruta de lectura.'});
