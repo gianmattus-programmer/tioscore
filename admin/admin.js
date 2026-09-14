@@ -1535,6 +1535,7 @@ function loadQuickAnalysis(a,filename=''){
  $('#checklist').innerHTML='';
  $('#checkProgress').textContent='0 / 0';
  renderFollowUp({timeframe:'Preparando…',objective:'Generando seguimiento personalizado…',nextReview:'',verificationPoints:[],questions:[]});
+ renderDeepAnalysis(x.deepAnalysis,x.sourceReport?.analysisMode||'fast');
  renderData(x.raw);
  $('#entitiesTable').innerHTML='<div class="empty-line" style="padding:10px">Completando entidades…</div>';
  $('#obligationsTable').innerHTML='<div class="empty-line" style="padding:10px">Completando obligaciones…</div>';
@@ -1568,7 +1569,7 @@ function loadAnalysis(a,isDemo=false,filename='',options={}){
  $('#summaryTags').innerHTML=x.tags.map(t=>'<span>'+esc(t)+'</span>').join('');
  $('#alertsGrid').innerHTML=x.alerts.map(v=>'<div class="alert '+esc(v.level)+'"><div class="alert-top"><i class="alert-dot"></i><b>'+esc(v.title)+'</b></div><p>'+esc(v.text)+'</p></div>').join('')||'<div class="empty-line">Sin alertas identificadas.</div>';
  renderRecommendations(x.recommendations);$('#closingHeadline').textContent=x.closing.headline||'Conclusión';$('#closingText').textContent=x.closing.text||'Sin cierre disponible.';
- renderChecklist(x.checklist);renderFollowUp(x.followUp);renderData(x.raw);renderEntities(x.entities);renderObligations(x.obligations);renderInquiries(x.inquiries);renderSections(x.reportSections);
+ renderChecklist(x.checklist);renderFollowUp(x.followUp);renderDeepAnalysis(x.deepAnalysis,x.sourceReport?.analysisMode||'fast');renderData(x.raw);renderEntities(x.entities);renderObligations(x.obligations);renderInquiries(x.inquiries);renderSections(x.reportSections);
  renderMetrics(x.metrics);renderReportCharts(x);renderCoverage(x);
  $('#advisorNotes').value=x.notes||'';
  if(!isDemo&&!options.skipHistory)saveToHistory(filename);
@@ -1670,7 +1671,7 @@ function normalize(a){
  x.metrics=Array.isArray(x.metrics)?x.metrics:[];x.debtSeries=Array.isArray(x.debtSeries)?x.debtSeries:[];x.debtComposition=Array.isArray(x.debtComposition)?x.debtComposition:[];
  x.monthlyBehavior=Array.isArray(x.monthlyBehavior)?x.monthlyBehavior:[];x.entities=Array.isArray(x.entities)?x.entities:[];x.obligations=Array.isArray(x.obligations)?x.obligations:[];
  x.inquiries=Array.isArray(x.inquiries)?x.inquiries:[];x.recommendations=Array.isArray(x.recommendations)?x.recommendations:[];x.checklist=Array.isArray(x.checklist)?x.checklist:[];
- x.raw=x.raw&&typeof x.raw==='object'?x.raw:{};x.reportSections=Array.isArray(x.reportSections)?x.reportSections:[];x.closing=x.closing||{};x.followUp=x.followUp&&typeof x.followUp==='object'?x.followUp:{};x.followUp.verificationPoints=Array.isArray(x.followUp.verificationPoints)?x.followUp.verificationPoints:[];x.followUp.questions=Array.isArray(x.followUp.questions)?x.followUp.questions:[];
+ x.raw=x.raw&&typeof x.raw==='object'?x.raw:{};x.reportSections=Array.isArray(x.reportSections)?x.reportSections:[];x.closing=x.closing||{};x.followUp=x.followUp&&typeof x.followUp==='object'?x.followUp:{};x.followUp.verificationPoints=Array.isArray(x.followUp.verificationPoints)?x.followUp.verificationPoints:[];x.followUp.questions=Array.isArray(x.followUp.questions)?x.followUp.questions:[];x.deepAnalysis=x.deepAnalysis&&typeof x.deepAnalysis==='object'?x.deepAnalysis:null;if(x.deepAnalysis){x.deepAnalysis.signals=Array.isArray(x.deepAnalysis.signals)?x.deepAnalysis.signals:[];x.deepAnalysis.recent=Array.isArray(x.deepAnalysis.recent)?x.deepAnalysis.recent:[];x.deepAnalysis.history=Array.isArray(x.deepAnalysis.history)?x.deepAnalysis.history:[];}
  x.reportCharts=x.reportCharts&&typeof x.reportCharts==='object'?x.reportCharts:{};
  for(const k of ['noteEvolution','classificationHistory','overdueByType','overdueShare','currentVsOverdue','institutionShare'])if(!Array.isArray(x.reportCharts[k]))x.reportCharts[k]=[];
  return x
@@ -1694,6 +1695,28 @@ function renderFollowUp(f={}){
  const next=$('#followUpReview');if(next)next.textContent=f.nextReview||'Comparar un reporte actualizado con la lectura actual.';
  const points=$('#followUpPoints');if(points)points.innerHTML=(f.verificationPoints||[]).map(x=>'<li>'+esc(x)+'</li>').join('')||'<li>Revisar cambios relevantes del reporte.</li>';
  const questions=$('#followUpQuestions');if(questions)questions.innerHTML=(f.questions||[]).map(x=>'<li>'+esc(x)+'</li>').join('')||'<li>¿Qué cambió desde la última asesoría?</li>';
+}
+function renderDeepAnalysis(deep,mode='fast'){
+ const grid=$('#deepSummaryGrid'),signals=$('#deepSignals'),recent=$('#deepHistoryRecent'),badge=$('#deepAnalysisBadge');
+ if(badge)badge.textContent=mode==='deep'?'Profundo':'Rápido';
+ if(!grid||!signals||!recent)return;
+ if(mode!=='deep'||!deep){
+  grid.innerHTML='<div class="deep-mode-empty">Modo rápido activo. Cambia a <b>Profundo</b> antes de cargar el PDF para analizar evolución histórica, picos de deuda y señales pasadas.</div>';
+  signals.innerHTML='';recent.innerHTML='';return;
+ }
+ const stat=(label,value,cls='')=>'<div class="deep-stat '+cls+'"><small>'+esc(label)+'</small><b>'+esc(value)+'</b></div>';
+ const reduction=deep.debtReductionFromPeak;
+ grid.innerHTML=[
+  stat('Registros históricos',String(deep.observations||0)),
+  stat('Deuda financiera actual',deep.currentFinancialDebt!=null?reportMoney(deep.currentFinancialDebt):'No determinada'),
+  stat('Pico histórico',deep.peakDebt?reportMoney(deep.peakDebt)+' · '+deep.peakDebtDate:'No determinado','warn'),
+  stat('Reducción desde pico',reduction!=null?Number(reduction).toFixed(1)+'%':'No determinada',reduction>0?'good':''),
+  stat('Vencido SBS actual',deep.currentOverdueSbs!=null?reportMoney(deep.currentOverdueSbs):'No determinado',Number(deep.currentOverdueSbs)>0?'bad':'good'),
+  stat('Documentos impagos',deep.currentUnpaidDocs?reportMoney(deep.currentUnpaidDocs):'S/ 0.00',Number(deep.currentUnpaidDocs)>0?'bad':'good')
+ ].join('');
+ signals.innerHTML=(deep.signals||[]).map(s=>'<div class="deep-signal '+esc(s.level||'warn')+'"><div><b>'+esc(s.title||'Señal')+'</b><p>'+esc(s.text||'')+'</p></div></div>').join('')||'<div class="deep-mode-empty">Sin señales históricas suficientes.</div>';
+ const rows=(deep.recent||[]).slice(0,8);
+ recent.innerHTML=rows.length?'<div class="deep-history-row head"><span>Fecha</span><span>Deuda</span><span>Vencidos</span><span>Semáforo</span></div>'+rows.map(r=>'<div class="deep-history-row"><span>'+esc(r.date)+'</span><b>'+esc(reportMoney(r.totalDebt))+'</b><span>'+esc(reportMoney((r.overdueSbs||0)+(r.unpaidDocs||0)))+'</span><span>'+esc(r.signal>2?'Rojo':r.signal>=.001?'Amarillo':'Verde')+'</span></div>').join(''):'';
 }
 function updateCheck(){const all=$$('#checklist input'),done=all.filter(x=>x.checked).length;$('#checkProgress').textContent=done+' / '+all.length}
 function renderData(data){
