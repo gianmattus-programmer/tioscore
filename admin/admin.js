@@ -90,7 +90,7 @@ async function bootstrap(){
  }catch{show('#configGate')}
 }
 function show(sel){['#configGate','#loginGate','#app'].forEach(x=>$(x)?.classList.add('hidden'));$(sel)?.classList.remove('hidden')}
-async function showApp(){show('#app');await initHistoryStore();renderHistory();checkAIStatus();setTimeout(()=>warmLocalAI(),900)}
+async function showApp(){show('#app');checkAIStatus();warmLocalAI();await initHistoryStore();renderHistory()}
 function esc(v=''){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function dateNow(){return new Intl.DateTimeFormat('es-PE',{dateStyle:'medium',timeStyle:'short'}).format(new Date())}
 function money(n){const v=Number(n);return Number.isFinite(v)?'S/ '+v.toLocaleString('es-PE',{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2}):String(n??'—')}
@@ -698,14 +698,14 @@ let localAiQueue=Promise.resolve();
 let localAiHardware=null;
 const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.82';
 const LOCAL_AI_CANDIDATES_F16=[
- 'Qwen3-1.7B-q4f16_1-MLC',
+ 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
  'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
- 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC'
+ 'Qwen3-1.7B-q4f16_1-MLC'
 ];
 const LOCAL_AI_CANDIDATES_F32=[
- 'Qwen3-1.7B-q4f32_1-MLC',
+ 'Qwen2.5-0.5B-Instruct-q4f32_1-MLC',
  'Qwen2.5-1.5B-Instruct-q4f32_1-MLC',
- 'Qwen2.5-0.5B-Instruct-q4f32_1-MLC'
+ 'Qwen3-1.7B-q4f32_1-MLC'
 ];
 let localAiModelId='';
 let localAiLastError='';
@@ -840,13 +840,13 @@ function normalizeLocalInterpretation(x){
 }
 async function runLocalInterpretation(analysis){
  const engine=await getLocalAiEngine();
- const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,3200);
+ const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,1800);
  const system='Asesor educativo de Tío Score, Perú. Usa solo los datos recibidos. No inventes ni cambies cifras. No prometas aprobación ni eliminación de registros. Devuelve SOLO JSON válido.';
- const user='Genera interpretación, plan y seguimiento personalizado. Estructura exacta: {"scoreDescription":"","summary":"","tags":[""],"alerts":[{"level":"red|yellow|green","title":"","text":""}],"recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],"closing":{"headline":"Conclusión de la lectura","text":""},"checklist":[""],"followUp":{"timeframe":"","objective":"","nextReview":"","verificationPoints":[""],"questions":[""]}}. Usa 2-5 alertas, 3-5 recomendaciones, 3-6 verificaciones y 2-5 preguntas para la próxima asesoría. DATOS: '+payload;
+ const user='Sé breve. Genera interpretación, plan y seguimiento personalizado. Estructura exacta: {"scoreDescription":"","summary":"","tags":[""],"alerts":[{"level":"red|yellow|green","title":"","text":""}],"recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],"closing":{"headline":"Conclusión de la lectura","text":""},"checklist":[""],"followUp":{"timeframe":"","objective":"","nextReview":"","verificationPoints":[""],"questions":[""]}}. Usa 2-4 alertas, 3-4 recomendaciones, 3-4 verificaciones y 2-3 preguntas para la próxima asesoría. DATOS: '+payload;
  const reply=await engine.chat.completions.create({
   messages:[{role:'system',content:system},{role:'user',content:user}],
   temperature:0.1,
-  max_tokens:650
+  max_tokens:520
  });
  const text=reply?.choices?.[0]?.message?.content||'';
  return normalizeLocalInterpretation(JSON.parse(cleanLocalJson(text)));
@@ -865,7 +865,7 @@ async function processPdf(file,{background=false}={}){
  }else{
   $('#uploadState').classList.remove('hidden');
   updateProcessTitle('Leyendo '+file.name);
-  updateProcessDetail('Extrayendo datos del reporte sin IA…');
+  updateProcessDetail('Extrayendo datos del reporte…');
  }
 
  let localShown=false;
@@ -882,47 +882,50 @@ async function processPdf(file,{background=false}={}){
   local.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + OCR local)':'Texto digital';
   local.sourceReport.totalPages=extracted.totalPages;
   local.sourceReport.visualPages=extracted.visualPages;
+  local.sourceReport.interpretationEngine='Reglas locales · respuesta inmediata';
 
+  // Mostrar el análisis completo por reglas inmediatamente. Qwen NO bloquea la ficha.
   localShown=true;
-  loadQuickAnalysis(local,file.name);
+  loadAnalysis(local,false,file.name,{skipReveal:false,skipHistory:true});
+  $('#analysisMeta').textContent='Listo · IA local mejorando en segundo plano';
+  updateProcessTitle('Análisis listo');
+  updateProcessDetail('Datos visibles. Qwen rápido está mejorando interpretación, plan y seguimiento en segundo plano…');
 
-  const confidenceLabel=parsed.parserConfidence>=70?'Parser local':'Lectura local parcial';
-  $('#analysisMeta').textContent=confidenceLabel+' · preparando interpretación…';
-  updateProcessTitle('Datos extraídos');
-  updateProcessDetail(confidenceLabel+' '+parsed.parserConfidence+'% · IA local para Interpretación, plan y seguimiento…');
-
-  try{
-   const interpretation=await generateLocalInterpretation(local);
-   Object.assign(local,interpretation);
-   local.confidence=parsed.parserConfidence;
-   local.sourceReport.interpretationEngine='IA local · Qwen 2.5 1.5B';
-   local.sourceReport.interpretationError='';
-   local.sourceReport.parserMode=parsed.parserConfidence>=70
-    ?'Parser local + IA local · '+(localAiModelId||'Qwen 2.5 1.5B')
-    :'Parser/OCR local parcial + IA local';
-  }catch(err){
-   const aiErr=String(err?.message||err||'IA local no disponible');
-   setLocalAiStatus('Reglas activas · Qwen falló');
-   const self=$('#aiSelfTest');if(self)self.textContent='Falló · '+aiErr.slice(0,120);
-   local.sourceReport.interpretationEngine='Reglas locales';
-   local.sourceReport.interpretationError=aiErr;
-   local.sourceReport.parserMode=parsed.parserConfidence>=70
-    ?'Parser local · interpretación por reglas'
-    :'Parser/OCR local parcial · reglas de respaldo';
-  }
-
-  if(background){
-   updateProcessTitle('Análisis listo');
-   updateProcessDetail(parsed.parserConfidence>=70
-    ?'Datos procesados localmente; IA local generó interpretación, plan y seguimiento.'
-    :'Lectura parcial procesada sin enviar el PDF completo a IA.');
-  }
-  loadAnalysis(local,false,file.name,{skipReveal:true});
+  // IndexedDB es local y rápido; guarda la versión inmediata.
+  await saveToHistory(file.name);
 
   if(background){
    state.drawerProcessing=false;
-   setTimeout(()=>closeNewAnalysisDrawer(true),250);
+   setTimeout(()=>closeNewAnalysisDrawer(true),120);
   }
+
+  // La IA continúa sin bloquear la carga ni el siguiente paso del asesor.
+  generateLocalInterpretation(local).then(async interpretation=>{
+   Object.assign(local,interpretation);
+   local.confidence=parsed.parserConfidence;
+   local.sourceReport.interpretationEngine='IA local · '+(localAiModelId||'Qwen rápido');
+   local.sourceReport.interpretationError='';
+   local.sourceReport.parserMode=parsed.parserConfidence>=70
+    ?'Parser local + '+(localAiModelId||'Qwen rápido')
+    :'Parser/OCR parcial + '+(localAiModelId||'Qwen rápido');
+
+   if(state.analysis===local){
+    loadAnalysis(local,false,file.name,{skipReveal:true,skipHistory:true,keepHistoryId:true});
+    $('#analysisMeta').textContent='Actualizado por IA local · '+dateNow();
+   }
+   await persistCurrentHistory().catch(()=>{});
+  }).catch(err=>{
+   const aiErr=String(err?.message||err||'IA local no disponible');
+   local.sourceReport.interpretationEngine='Reglas locales';
+   local.sourceReport.interpretationError=aiErr;
+   local.sourceReport.parserMode=parsed.parserConfidence>=70
+    ?'Parser local · reglas rápidas'
+    :'Parser/OCR parcial · reglas rápidas';
+   setLocalAiStatus('Reglas activas · Qwen no disponible');
+   const self=$('#aiSelfTest');if(self)self.textContent='Falló · '+aiErr.slice(0,120);
+   if(state.analysis===local)renderInterpretationEngine(local);
+   persistCurrentHistory().catch(()=>{});
+  });
  }catch(err){
   if(background){
    if(localShown){
@@ -995,7 +998,8 @@ async function extractPdfHybrid(file,{onQuickText}={}){
   let done=0;
   updateProcessDetail('OCR local: preparando lectura de '+visualPages+' página'+(visualPages===1?'':'s')+' sin tokens…');
   await getOcrScheduler();
-  await parallelMapLimit(visualJobs,2,async job=>{
+  const ocrParallel=(Number(navigator.hardwareConcurrency)||2)>=8&&(Number(navigator.deviceMemory)||0)>=8?3:2;
+  await parallelMapLimit(visualJobs,ocrParallel,async job=>{
    const image=await renderPageForVision(job.page);
    const visualText=await readPageWithOcr(image,job.pageNumber);
    pages[job.index]='--- PÁGINA '+job.pageNumber+' · OCR LOCAL ---\n'+visualText;
@@ -1091,7 +1095,8 @@ async function getOcrScheduler(){
   const T=await ensureTesseract();
   const scheduler=T.createScheduler();
   const cores=Math.max(1,Number(navigator.hardwareConcurrency)||2);
-  const workerCount=cores>=6?2:1;
+  const mem=Math.max(0,Number(navigator.deviceMemory)||0);
+  const workerCount=cores>=8&&mem>=8?3:cores>=4?2:1;
   updateProcessDetail('OCR local · cargando motor en español…');
   for(let i=0;i<workerCount;i++){
    const worker=await T.createWorker('spa',1,{
@@ -1168,7 +1173,7 @@ function loadQuickAnalysis(a,filename=''){
 }
 
 function loadAnalysis(a,isDemo=false,filename='',options={}){
- if(options.historyId)state.currentHistoryId=options.historyId;else if(!isDemo)state.currentHistoryId=null;
+ if(options.historyId)state.currentHistoryId=options.historyId;else if(!isDemo&&!options.keepHistoryId)state.currentHistoryId=null;
  state.analysis=normalize(a);const x=state.analysis;
  $('#uploadPanel').classList.add('hidden');$('#resultPanel').classList.remove('hidden');
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
@@ -1190,7 +1195,7 @@ function loadAnalysis(a,isDemo=false,filename='',options={}){
  renderChecklist(x.checklist);renderFollowUp(x.followUp);renderData(x.raw);renderEntities(x.entities);renderObligations(x.obligations);renderInquiries(x.inquiries);renderSections(x.reportSections);
  renderMetrics(x.metrics);renderReportCharts(x);renderCoverage(x);
  $('#advisorNotes').value=x.notes||'';
- if(!isDemo)saveToHistory(filename);
+ if(!isDemo&&!options.skipHistory)saveToHistory(filename);
  if(!options.skipReveal)runScoreReveal(x.score);
 }
 function getScoreBand(score){
@@ -1643,7 +1648,7 @@ async function checkAIStatus(){
  if(!hw.webgpu){setLocalAiStatus('Reglas activas · sin WebGPU');return}
  if(localAiEngine)setLocalAiStatus('Qwen verificado · '+localAiModelId,true);
  else if(localAiLastError)setLocalAiStatus('Reglas activas · Qwen falló');
- else setLocalAiStatus('Qwen · pendiente de autoprueba');
+ else setLocalAiStatus('Qwen rápido · precalentando…');
 }
 
 bootstrap();
