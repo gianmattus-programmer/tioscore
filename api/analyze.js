@@ -18,12 +18,12 @@ module.exports=async(req,res)=>{
  if(req.method!=='POST')return res.status(405).json({error:'method_not_allowed'});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured',message:'Falta configurar OPENAI_API_KEY en Vercel.'});
  const text=String(req.body?.text||'').slice(0,240000),filename=String(req.body?.filename||'reporte.pdf'),extractionMeta=req.body?.extractionMeta||{};
- const mode=String(req.body?.mode||'full');
+ const mode=String(req.body?.mode||'interpret');
  const quick=mode==='quick';
 
  if(mode==='interpret'){
   const structured=req.body?.structured&&typeof req.body.structured==='object'?req.body.structured:{};
-  const payload=JSON.stringify(structured).slice(0,18000);
+  const payload=JSON.stringify(structured).slice(0,12000);
   if(payload.length<20)return res.status(400).json({error:'missing_structured_data',message:'No llegaron datos suficientes para interpretar.'});
 
   const interpretationPrompt=`Eres el asesor educativo de Tío Score. Recibes datos YA EXTRAÍDOS de un reporte crediticio peruano.
@@ -59,7 +59,7 @@ ${payload}`;
    const r=await fetch('https://api.openai.com/v1/responses',{
     method:'POST',
     headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
-    body:JSON.stringify({model:'gpt-5.6-luna',input:interpretationPrompt,reasoning:{effort:'low'},max_output_tokens:2200})
+    body:JSON.stringify({model:'gpt-5.6-luna',input:interpretationPrompt,reasoning:{effort:'low'},max_output_tokens:1600})
    });
    const data=await r.json();
    if(!r.ok)return res.status(502).json({error:'ai_error',message:data?.error?.message||'El proveedor de IA devolvió un error.'});
@@ -73,6 +73,13 @@ ${payload}`;
   }catch(e){
    return res.status(500).json({error:'interpretation_failed',message:'No se pudo generar la interpretación del reporte.'});
   }
+ }
+
+ if(mode!=='interpret'){
+  return res.status(410).json({
+   error:'full_analysis_disabled',
+   message:'El análisis completo del PDF con IA está desactivado para evitar consumo alto de tokens. Usa el parser/OCR local y la interpretación estructurada.'
+  });
  }
 
  if(text.length<100)return res.status(400).json({error:'pdf_without_text',message:'El PDF no contiene suficiente texto digital para esta ruta de lectura.'});
