@@ -18,7 +18,63 @@ module.exports=async(req,res)=>{
  if(req.method!=='POST')return res.status(405).json({error:'method_not_allowed'});
  if(!process.env.OPENAI_API_KEY)return res.status(503).json({error:'ai_not_configured',message:'Falta configurar OPENAI_API_KEY en Vercel.'});
  const text=String(req.body?.text||'').slice(0,240000),filename=String(req.body?.filename||'reporte.pdf'),extractionMeta=req.body?.extractionMeta||{};
- const quick=req.body?.mode==='quick';
+ const mode=String(req.body?.mode||'full');
+ const quick=mode==='quick';
+
+ if(mode==='interpret'){
+  const structured=req.body?.structured&&typeof req.body.structured==='object'?req.body.structured:{};
+  const payload=JSON.stringify(structured).slice(0,18000);
+  if(payload.length<20)return res.status(400).json({error:'missing_structured_data',message:'No llegaron datos suficientes para interpretar.'});
+
+  const interpretationPrompt=`Eres el asesor educativo de Tío Score. Recibes datos YA EXTRAÍDOS de un reporte crediticio peruano.
+NO vuelvas a extraer datos, NO inventes cifras y NO cambies el score recibido.
+Tu única tarea es redactar la sección "Interpretación y plan" con lenguaje claro, prudente y útil para explicarla en vivo.
+
+REGLAS:
+- Todo en español natural.
+- Basa cada afirmación únicamente en los datos recibidos.
+- No garantices aprobación de créditos, eliminación de registros ni aumento del score.
+- Prioriza deuda vencida, días de atraso, protestos, deuda tributaria/laboral, capacidad de pago y score.
+- Si un valor es 0, "No informado" o está ausente, no lo conviertas en problema.
+- Entre 2 y 5 alertas/fortalezas.
+- Entre 3 y 5 recomendaciones concretas y ordenadas.
+- El cierre debe ser breve.
+- Devuelve SOLO JSON válido.
+
+Estructura exacta:
+{
+ "scoreDescription":"",
+ "summary":"",
+ "tags":[""],
+ "alerts":[{"level":"red|yellow|green","title":"","text":""}],
+ "recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],
+ "closing":{"headline":"Conclusión de la lectura","text":""},
+ "checklist":[""]
+}
+
+DATOS ESTRUCTURADOS:
+${payload}`;
+
+  try{
+   const r=await fetch('https://api.openai.com/v1/responses',{
+    method:'POST',
+    headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY,'Content-Type':'application/json'},
+    body:JSON.stringify({model:'gpt-5.6-luna',input:interpretationPrompt,reasoning:{effort:'low'},max_output_tokens:2200})
+   });
+   const data=await r.json();
+   if(!r.ok)return res.status(502).json({error:'ai_error',message:data?.error?.message||'El proveedor de IA devolvió un error.'});
+   const interpretation=JSON.parse(cleanJson(outputText(data)));
+   interpretation.tags=Array.isArray(interpretation.tags)?interpretation.tags:[];
+   interpretation.alerts=Array.isArray(interpretation.alerts)?interpretation.alerts:[];
+   interpretation.recommendations=Array.isArray(interpretation.recommendations)?interpretation.recommendations:[];
+   interpretation.checklist=Array.isArray(interpretation.checklist)?interpretation.checklist:[];
+   interpretation.closing=interpretation.closing&&typeof interpretation.closing==='object'?interpretation.closing:{headline:'Conclusión de la lectura',text:''};
+   return res.status(200).json({interpretation,mode:'interpret'});
+  }catch(e){
+   return res.status(500).json({error:'interpretation_failed',message:'No se pudo generar la interpretación del reporte.'});
+  }
+ }
+
  if(text.length<100)return res.status(400).json({error:'pdf_without_text',message:'El PDF no contiene suficiente texto digital para esta ruta de lectura.'});
 
  if(quick){
