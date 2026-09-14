@@ -397,7 +397,7 @@ const dz=$('#dropZone');
 ['dragleave','drop'].forEach(ev=>dz?.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag')}));
 dz?.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f?.type==='application/pdf')processPdf(f)});
 
-async function postAnalysis(text,filename,extractionMeta,mode='full'){
+async function postAnalysis(text,filename,extractionMeta,mode='local'){
  const r=await fetch('/api/analyze',{
   method:'POST',
   headers:{'content-type':'application/json'},
