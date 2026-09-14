@@ -984,3 +984,32 @@ html,body{max-width:100%;overflow-x:hidden}
 .engine-badge{display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;font-size:.58rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--line)}
 .engine-badge.engine-ai{background:#eef8f2;color:var(--green);border-color:rgba(26,122,74,.2)}
 .engine-badge.engine-rules{background:#fff7e8;color:var(--amber);border-color:rgba(183,110,0,.18)}
+
+
+/* ===== Progreso de lectura del reporte ===== */
+.upload-state{align-items:flex-start}
+.upload-state-copy{display:grid;gap:5px;min-width:0;flex:1}
+.upload-state-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.upload-state-head strong{font-size:.78rem;color:var(--green)}
+.read-progress-track{display:block;width:100%;height:6px;border-radius:999px;background:#ece8df;overflow:hidden;margin-top:3px}
+.read-progress-track i{display:block;width:0;height:100%;border-radius:inherit;background:var(--green);transition:width .2s ease}
+.drawer-progress-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;font-size:.68rem}
+.drawer-progress-meta span{color:var(--muted)}
+.drawer-progress-meta b{color:var(--green)}
+.drawer-progress-line i{width:0!important;transition:width .2s ease!important;animation:none!important}
+.workspace-status-group{min-width:0;display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.read-status-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 7px;border:1px solid rgba(26,122,74,.16);background:#f4faf6;border-radius:999px;white-space:nowrap}
+.read-status-track{width:42px;height:5px;border-radius:999px;background:#dfe8e2;overflow:hidden}
+.read-status-track i{display:block;width:0;height:100%;background:var(--green);border-radius:inherit;transition:width .2s ease}
+.read-status-badge b{font-size:.64rem;color:var(--green)}
+.read-status-badge small{font-size:.58rem;color:#5f7768}
+.ai-work-badge{display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;font-size:.6rem;font-weight:800;white-space:nowrap;border:1px solid var(--line)}
+.ai-work-badge.waiting{background:#f6f5f2;color:var(--muted)}
+.ai-work-badge.processing{background:#fff7e8;color:var(--amber);border-color:rgba(183,110,0,.16)}
+.ai-work-badge.done{background:#eef8f2;color:var(--green);border-color:rgba(26,122,74,.18)}
+.ai-work-badge.fallback{background:#fff1f0;color:var(--red);border-color:rgba(180,35,24,.15)}
+@media(max-width:760px){
+ .workspace-status-group{gap:6px}
+ .read-status-track{width:30px}
+ .workspace-meta{gap:7px}
+}
