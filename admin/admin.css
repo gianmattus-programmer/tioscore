@@ -914,3 +914,16 @@ html,body{max-width:100%;overflow-x:hidden}
   .score-face-reveal .face-eye-left{left:27px}
   .score-face-reveal .face-eye-right{right:27px}
 }
+
+
+/* ===== Seguimiento personalizado para próxima asesoría ===== */
+.followup-block{background:#fffdf8}
+.followup-card{display:grid;gap:14px}
+.followup-item{padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.followup-item small,.followup-grid small{display:block;margin-bottom:5px;font-size:.62rem;letter-spacing:.09em;text-transform:uppercase;font-weight:800;color:var(--gold)}
+.followup-item p{margin:0;font-size:.84rem;line-height:1.55;color:var(--text)}
+.followup-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.followup-grid>div{padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.followup-grid ul{margin:0;padding-left:17px;display:grid;gap:7px}
+.followup-grid li{font-size:.78rem;line-height:1.45;color:var(--text)}
+@media(max-width:1180px){.followup-grid{grid-template-columns:1fr}}
