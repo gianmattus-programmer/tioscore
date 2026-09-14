@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#fbfaf7">
   <title>Tío Score · Análisis privado</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp">
-  <link rel="stylesheet" href="/admin/admin.css?v=20260914-readprogress1">
+  <link rel="stylesheet" href="/admin/admin.css?v=20260914-qwencpu1">
 </head>
 <body>
   <div id="configGate" class="gate hidden">
@@ -135,7 +135,7 @@
             </div>
           </div>
           <div class="workspace-meta">
-            <div class="workspace-status-group"><span id="reportTypeBadge" class="report-badge">Sentinel · Reporte detectado</span><span id="analysisMeta">Procesado ahora</span><span id="reportReadBadge" class="read-status-badge"><span class="read-status-track"><i id="reportReadBar"></i></span><b id="reportReadPct">0%</b><small>leído</small></span><span id="aiWorkBadge" class="ai-work-badge waiting">IA en espera</span></div>
+            <div class="workspace-status-group"><span id="reportTypeBadge" class="report-badge">Sentinel · Reporte detectado</span><span id="analysisMeta">Procesado ahora</span><span id="reportReadBadge" class="read-status-badge"><span class="read-status-track"><i id="reportReadBar"></i></span><b id="reportReadPct">0%</b><small>leído</small></span><span id="aiWorkBadge" class="ai-work-badge waiting">IA en espera</span><span id="aiInlineError" class="ai-inline-error hidden"></span></div>
             <div class="workspace-meta-right admin-only"><span id="confidenceValue">Confianza —</span><button id="printBtn" class="mini-btn">Guardar PDF</button></div>
           </div>
 
@@ -332,12 +332,12 @@
         <div class="page-head"><div><span class="eyebrow">CONFIGURACIÓN</span><h2>Motor de análisis</h2></div></div>
         <div class="settings-grid">
           <article class="settings-card"><h3>Privacidad</h3><div class="setting-row"><span>Acceso por contraseña</span><b class="ok">Activo</b></div><div class="setting-row"><span>Sesión</span><b class="ok">Protegida</b></div><div class="setting-row"><span>Indexación pública</span><b>No</b></div></article>
-          <article class="settings-card"><h3>Motor local</h3><div class="setting-row"><span>Extracción</span><b class="ok">Parser + OCR local</b></div><div class="setting-row"><span>IA</span><b>Interpretación, plan y seguimiento</b></div><div class="setting-row"><span>Modo</span><b class="ok">Rápido · Qwen 0.5B prioritario</b></div><div class="setting-row"><span>Modelo activo</span><b id="aiModelActive">Qwen · detectando…</b></div><div class="setting-row"><span>Ejecución</span><b>Web Worker + WebGPU</b></div><div class="setting-row"><span>Hardware</span><b id="aiHardware">Comprobando…</b></div><div class="setting-row"><span>Autoprueba Qwen</span><b id="aiSelfTest">Pendiente</b></div><div class="setting-row"><span>Costo por consulta</span><b class="ok">Sin facturación por tokens</b></div><div class="setting-row"><span>Estado</span><b id="aiStatus">Comprobando…</b></div><button id="retryLocalAi" class="mini-btn" type="button">Reintentar Qwen</button></article>
+          <article class="settings-card"><h3>Motor local</h3><div class="setting-row"><span>Extracción</span><b class="ok">Parser + OCR local</b></div><div class="setting-row"><span>IA</span><b>Interpretación, plan y seguimiento</b></div><div class="setting-row"><span>Modo</span><b class="ok">Rápido · Qwen 0.5B prioritario</b></div><div class="setting-row"><span>Modelo activo</span><b id="aiModelActive">Qwen · detectando…</b></div><div class="setting-row"><span>Ejecución</span><b>WebGPU preferido · CPU/WASM respaldo</b></div><div class="setting-row"><span>Hardware</span><b id="aiHardware">Comprobando…</b></div><div class="setting-row"><span>Autoprueba Qwen</span><b id="aiSelfTest">Pendiente</b></div><div class="setting-row"><span>Costo por consulta</span><b class="ok">Sin facturación por tokens</b></div><div class="setting-row"><span>Estado</span><b id="aiStatus">Comprobando…</b></div><button id="retryLocalAi" class="mini-btn" type="button">Reintentar Qwen</button></article>
         </div>
       </section>
     </main>
   </div>
 
-  <script type="module" src="/admin/admin.js?v=20260914-qwennamefix1"></script>
+  <script type="module" src="/admin/admin.js?v=20260914-qwencpu1"></script>
 </body>
 </html>
