@@ -447,49 +447,101 @@ function buildRuleInterpretation(a){
  const raw=a.raw||{};
  const overdue=reportMoneyNumber(raw['Deuda vencida SBS / Microfinanzas'])||0;
  const overdueDocs=reportMoneyNumber(raw['Monto de documentos vencidos'])||0;
+ const current=reportMoneyNumber(raw['Deuda vigente SBS / Microfinanzas']||raw['Deuda vigente · Consulta rápida'])||0;
  const tax=reportMoneyNumber(raw['Deuda tributaria'])||0;
  const labor=reportMoneyNumber(raw['Deuda laboral'])||0;
  const days=Math.max(Number(raw['Días de vencimiento del documento'])||0,Number(raw['Días de atraso visibles en BCP'])||0);
  const unreg=reportMoneyNumber(raw['Documentos protestados no regularizados'])||0;
- const alerts=[],recs=[],tags=[];
- if(score>0)tags.push(getScoreBand(score).category);
+ const capacity=String(raw['Capacidad de pago mensual']||'').trim();
+ const banked=String(raw['Bancarizado']||'').trim();
+ const entities=String(raw['Entidades detectadas']||a.client?.entities||'').trim();
+ const confidence=Number(a.confidence)||0;
+ const alerts=[],recs=[],tags=[],summaryParts=[];
+ const band=score?getScoreBand(score).category:'Puntaje por revisar';
+
+ if(score>0){
+  tags.push(band);
+  summaryParts.push('El score identificado es '+score+' y se ubica en "'+band+'".');
+  if(score<598){
+   alerts.push({level:'red',title:'Score en rango bajo',text:'El puntaje actual requiere especial atención antes de buscar nuevo financiamiento.'});
+   recs.push({title:'Priorizar la recuperación del perfil',text:'Evita sumar nuevas obligaciones mientras revisas atrasos, saldos pendientes y datos que deban actualizarse.',impact:'Prioridad 1'});
+  }else if(score<722){
+   alerts.push({level:'yellow',title:'Score en rango medio',text:'El puntaje es intermedio: no es una alerta crítica por sí solo, pero todavía hay margen importante de mejora.'});
+   recs.push({title:'Fortalecer el perfil antes de solicitar más crédito',text:'Mantén pagos puntuales, controla el nivel de deuda y evita nuevas consultas innecesarias mientras consolidas un mejor historial.',impact:'Prioridad 2'});
+  }else if(score<877){
+   alerts.push({level:'green',title:'Score en buen rango',text:'El puntaje se encuentra en un nivel favorable, sujeto a la revisión de obligaciones y atrasos del reporte.'});
+  }else{
+   alerts.push({level:'green',title:'Score en rango excelente',text:'El puntaje se encuentra en el rango más alto de la escala utilizada por Tío Score.'});
+  }
+ }
+
+ if(current>0)summaryParts.push('La deuda vigente identificada es '+reportMoney(current)+'.');
  if(overdue>0||overdueDocs>0){
+  const totalOverdue=Math.max(overdue,overdueDocs);
+  summaryParts.push('Se detecta deuda vencida por '+reportMoney(totalOverdue)+', que debe ser priorizada.');
   alerts.push({level:'red',title:'Obligaciones vencidas detectadas',text:'El reporte registra montos vencidos que requieren revisión y regularización.'});
-  recs.push({title:'Regularizar obligaciones vencidas',text:'Prioriza los saldos vencidos identificados y conserva constancias de pago o no adeudo.',impact:'Prioridad 1'});
+  recs.unshift({title:'Regularizar obligaciones vencidas',text:'Prioriza los saldos vencidos identificados y conserva constancias de pago o no adeudo.',impact:'Prioridad 1'});
   tags.push('Deuda vencida');
+ }else if(score>0){
+  summaryParts.push('En los campos leídos no se identificó una deuda vencida explícita.');
  }
  if(days>0){
+  summaryParts.push('El mayor atraso identificado es de '+days+' días.');
   alerts.push({level:'red',title:'Atraso registrado',text:'Se observan '+days+' días de atraso en la información extraída.'});
-  if(!recs.some(r=>/vencid/i.test(r.title)))recs.push({title:'Corregir el atraso',text:'Regulariza la obligación atrasada y verifica posteriormente su actualización.',impact:'Prioridad 1'});
+  if(!recs.some(r=>/vencid|atras/i.test(r.title)))recs.unshift({title:'Corregir el atraso',text:'Regulariza la obligación atrasada y verifica posteriormente su actualización.',impact:'Prioridad 1'});
  }
  if(unreg>0){
+  summaryParts.push('Existen documentos protestados no regularizados por '+reportMoney(unreg)+'.');
   alerts.push({level:'red',title:'Protestos no regularizados',text:'El reporte registra documentos protestados pendientes de regularización.'});
   recs.push({title:'Revisar documentos protestados',text:'Regulariza los documentos protestados y solicita sustento de la actualización.',impact:'Prioridad 2'});
  }
  if(tax>0||labor>0){
+  summaryParts.push('También aparecen obligaciones tributarias o laborales que deben verificarse.');
   alerts.push({level:'yellow',title:'Obligaciones adicionales',text:'Se detectan obligaciones tributarias o laborales que conviene revisar.'});
   recs.push({title:'Revisar obligaciones adicionales',text:'Verifica el estado y exigibilidad de las obligaciones tributarias o laborales detectadas.',impact:'Prioridad 2'});
  }
- if(!alerts.length)alerts.push({level:'green',title:'Sin alertas críticas en los campos principales',text:'Los campos principales extraídos no muestran una alerta explícita; revisa igualmente el detalle completo del reporte.'});
+ if(capacity)summaryParts.push('La capacidad de pago reportada figura como '+capacity+'.');
+ if(banked)summaryParts.push('El reporte indica condición de bancarización: '+banked+'.');
+ if(entities)summaryParts.push('Se identificaron entidades como '+entities+'.');
+
+ if(!score&&confidence<70){
+  alerts.push({level:'yellow',title:'Lectura parcial del documento',text:'No se extrajo suficiente información para emitir una interpretación completa de forma automática.'});
+  summaryParts.push('La extracción fue parcial, por lo que conviene revisar manualmente los campos no identificados.');
+ }
+ if(!alerts.length)alerts.push({level:'green',title:'Sin observaciones críticas en los datos extraídos',text:'Los campos identificados no muestran atrasos, vencidos o protestos explícitos.'});
  if(!recs.length)recs.push({title:'Mantener pagos puntuales',text:'Conserva el cumplimiento de las obligaciones vigentes y evita atrasos.',impact:'Prioridad 1'});
- recs.push({title:'Verificar la actualización del reporte',text:'Después de cualquier regularización, revisa un reporte posterior para confirmar que la información haya sido actualizada.',impact:recs.length===1?'Prioridad 2':'Seguimiento'});
- const band=score?getScoreBand(score).category:'Puntaje por revisar';
+ if(!recs.some(r=>/actualizaci[oó]n/i.test(r.title)))recs.push({title:'Verificar la actualización del reporte',text:'Revisa un reporte posterior para confirmar cualquier cambio, pago o regularización.',impact:'Seguimiento'});
+
+ const issue=overdue>0||overdueDocs>0||days>0||unreg>0||tax>0||labor>0||score>0&&score<598;
+ const medium=score>=598&&score<722;
  return {
-  scoreDescription:score?'El score se encuentra en el rango "'+band+'". La lectura debe complementarse con las obligaciones y atrasos observados.':'No se identificó un score explícito con suficiente certeza.',
-  summary:(overdue>0||overdueDocs>0||days>0)
-   ?'La lectura presenta señales que requieren atención, principalmente obligaciones vencidas o atrasos identificados en el reporte.'
-   :'La lectura automática no detectó una señal crítica en los campos principales extraídos. Conviene validar el detalle antes de tomar decisiones.',
+  scoreDescription:score
+   ?'Tu score es '+score+' ('+band+'). '+(score<598?'Se encuentra en un rango de atención.':score<722?'Es un rango intermedio y aún puede fortalecerse.':score<877?'Se encuentra en un rango favorable.':'Se encuentra en un rango excelente.')
+   :'No se identificó un score explícito con suficiente certeza.',
+  summary:summaryParts.join(' ')||'La lectura no obtuvo suficientes datos estructurados para construir un resumen completo.',
   tags:[...new Set(tags)].slice(0,5),
   alerts:alerts.slice(0,5),
   recommendations:recs.slice(0,5),
-  closing:{headline:'Conclusión de la lectura',text:'Prioriza la regularización de cualquier observación pendiente y confirma los cambios en un reporte actualizado.'},
-  checklist:['Revisar obligaciones identificadas','Regularizar pendientes si corresponde','Conservar constancias','Verificar actualización en un nuevo reporte'],
+  closing:{
+   headline:'Conclusión de la lectura',
+   text:issue
+    ?'Antes de una nueva solicitud de crédito, prioriza las observaciones detectadas y confirma su actualización en un reporte posterior.'
+    :medium
+      ?'El perfil se encuentra en una zona intermedia. El objetivo es mantener puntualidad, controlar la deuda y comprobar su evolución en una siguiente revisión.'
+      :'Mantén el comportamiento actual y vuelve a comparar el reporte para confirmar la evolución del perfil.'
+  },
+  checklist:[
+   'Revisar los datos y obligaciones identificadas',
+   ...(issue?['Regularizar pendientes detectados']:[]),
+   'Conservar constancias de pago o regularización',
+   'Comparar con un reporte actualizado'
+  ],
   followUp:{
-   timeframe:(overdue>0||overdueDocs>0||days>0)?'7–30 días':'30–60 días',
-   objective:(overdue>0||overdueDocs>0||days>0)?'Confirmar regularización de atrasos y cambios en el reporte.':'Confirmar que el perfil se mantenga estable y sin nuevas observaciones.',
-   nextReview:'Comparar un reporte actualizado con esta lectura y registrar cambios en score, saldos, atrasos y estados.',
-   verificationPoints:['Estado de obligaciones pendientes','Actualización de saldos y días de atraso','Cambios en score o clasificación','Nuevas consultas u obligaciones'],
-   questions:['¿Qué obligaciones se regularizaron desde esta lectura?','¿Existe alguna nueva deuda o solicitud de crédito?','¿Qué cambios aparecen en el reporte actualizado?']
+   timeframe:issue?'7–30 días':medium?'30–45 días':'30–60 días',
+   objective:issue?'Confirmar regularizaciones y medir cambios del perfil.':medium?'Medir si el score y el nivel de deuda evolucionan hacia un rango favorable.':'Confirmar estabilidad del perfil y ausencia de nuevas observaciones.',
+   nextReview:'Comparar score, deuda vigente, vencidos, días de atraso y nuevas consultas contra esta lectura.',
+   verificationPoints:['Score actualizado','Estado de obligaciones pendientes','Cambios en deuda vigente y vencida','Días de atraso y nuevas consultas'],
+   questions:['¿Hubo pagos o regularizaciones desde esta lectura?','¿Se adquirió alguna nueva obligación?','¿Cambió el score o el estado de alguna deuda?']
   }
  };
 }
@@ -613,6 +665,7 @@ function parseSentinelReport(source,meta={}){
   reportCharts:{noteEvolution:[],classificationHistory:[],overdueByType:[],overdueShare:[],currentVsOverdue:[],institutionShare:debtComposition}
  };
  Object.assign(analysis,buildRuleInterpretation(analysis));
+ analysis.sourceReport.interpretationEngine='Reglas locales';
  return {analysis,parserConfidence};
 }
 function interpretationPayload(a){
@@ -794,10 +847,14 @@ async function processPdf(file,{background=false}={}){
    const interpretation=await generateLocalInterpretation(local);
    Object.assign(local,interpretation);
    local.confidence=parsed.parserConfidence;
+   local.sourceReport.interpretationEngine='IA local · Qwen 2.5 1.5B';
+   local.sourceReport.interpretationError='';
    local.sourceReport.parserMode=parsed.parserConfidence>=70
     ?'Parser local + IA local · Qwen 2.5 1.5B'
     :'Parser/OCR local parcial + IA local';
-  }catch{
+  }catch(err){
+   local.sourceReport.interpretationEngine='Reglas locales';
+   local.sourceReport.interpretationError=String(err?.message||err||'IA local no disponible');
    local.sourceReport.parserMode=parsed.parserConfidence>=70
     ?'Parser local · interpretación por reglas'
     :'Parser/OCR local parcial · reglas de respaldo';
@@ -1015,11 +1072,21 @@ async function readPageWithOcr(image,page){
  }
 }
 
+function renderInterpretationEngine(x){
+ const el=$('#interpretationEngineBadge');if(!el)return;
+ const engine=x?.sourceReport?.interpretationEngine||'Reglas locales';
+ const isAI=/IA local/i.test(engine);
+ el.textContent=isAI?'IA local':'Reglas locales';
+ el.className='engine-badge '+(isAI?'engine-ai':'engine-rules');
+ const err=x?.sourceReport?.interpretationError||'';
+ el.title=isAI?'Interpretación generada por Qwen local.':(err?'Qwen no completó la generación: '+err:'Interpretación generada con reglas locales.');
+}
 function loadQuickAnalysis(a,filename=''){
  state.analysis=normalize(a);const x=state.analysis;
  $('#uploadPanel').classList.add('hidden');$('#resultPanel').classList.remove('hidden');
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
  $('#analysisMeta').textContent='Vista rápida · completando análisis…';
+ renderInterpretationEngine(x);
  $('#confidenceValue').textContent='Lectura preliminar '+(x.confidence||0)+'%';
  const visibleName=firstName(x.client.name||'Cliente');
  $('#clientName').textContent=visibleName;
@@ -1055,6 +1122,7 @@ function loadAnalysis(a,isDemo=false,filename='',options={}){
  $('#uploadPanel').classList.add('hidden');$('#resultPanel').classList.remove('hidden');
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
  $('#analysisMeta').textContent=(isDemo?'Demo':'Procesado')+' · '+dateNow();
+ renderInterpretationEngine(x);
  $('#confidenceValue').textContent='Confianza '+(x.confidence||0)+'%';
  const visibleName=firstName(x.client.name||'Cliente');
  $('#clientName').textContent=visibleName;
