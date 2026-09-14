@@ -518,7 +518,7 @@ function detectInstitutions(text){
  const defs=[
   ['BCP',/\b(?:BCP|BANCO DE CR[EÉ]DITO DEL PER[UÚ])\b/i],
   ['BBVA',/\bBBVA\b/i],['Interbank',/\bINTERBANK\b/i],['Scotiabank',/\bSCOTIABANK\b/i],
-  ['Mibanco',/\bMIBANCO\b/i],['BanBif',/\bBANBIF\b/i],['Banco Pichincha',/\b(?:BANCO )?PICHINCHA\b/i],
+  ['Mibanco',/\b(?:MIBANCO|MIBCO)\b/i],['Doctor Sol',/\bDOCTOR\s+SOL\b/i],['BanBif',/\bBANBIF\b/i],['Banco Pichincha',/\b(?:BANCO )?PICHINCHA\b/i],
   ['Banco de la Nación',/\bBANCO DE LA NACI[OÓ]N\b/i],['Caja Arequipa',/\bCAJA AREQUIPA\b/i],
   ['Caja Huancayo',/\bCAJA HUANCAYO\b/i],['Caja Piura',/\bCAJA PIURA\b/i],['Caja Cusco',/\bCAJA CUSCO\b/i],
   ['Claro',/\bCLARO\b/i],['Entel',/\bENTEL\b/i],['Movistar',/\bMOVISTAR\b/i]
@@ -642,15 +642,29 @@ function parseSentinelReport(source,meta={}){
  const score=Math.max(0,Math.min(999,Number(scoreRaw)||0));
  const scoreLabel=reportCapture(text,[/(?:nivel\s+del\s+score|puntaje)\s*[:\-]?\s*(puntaje\s+(?:muy\s+)?(?:bajo|medio|bueno|excelente)|(?:muy\s+)?(?:bajo|medio|bueno|excelente))/i]);
  const creation=reportCapture(text,[/(?:fecha(?: y hora)? de creaci[oó]n|creationDateTime)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)/i]);
- const updated=reportCapture(text,[/(?:informaci[oó]n actualizada(?: al)?|informationUpdated)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i]);
+ const updated=reportCapture(text,[/(?:informaci[oó]n actualizada(?: al)?|informationUpdated)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i,/(?:informaci[oó]n actualizada(?: al)?)[^\d]{0,10}(\d{1,2}\s+de\s+[A-Za-zÁÉÍÓÚáéíóú]+\s+del?\s+\d{4})/i]);
  const documentType=reportCapture(text,[/(?:tipo de documento|documentType)\s*[:\-]?\s*(DNI|CE|RUC|PASAPORTE)/i])||(dni?'DNI':ruc?'RUC':'');
  const banc=reportCapture(text,[/bancarizad[oa]\s*[:\-]?\s*(S[IÍ]|NO)\b/i]);
  const capacity=reportCapture(text,[/(?:capacidad(?: de)? pago(?: mensual)?|capacityOfMonthlyPayment)\s*[:\-]?\s*((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i]);
- const quickDebt=reportCapture(text,[/(?:deuda vigente\s*(?:·|-)?\s*consulta r[aá]pida|currentDebtQuickQuery)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
- const currentDebt=reportCapture(text,[/(?:deuda vigente\s*(?:SBS\s*\/?\s*Microfinanzas)?|currentDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
- const overdueDebt=reportCapture(text,[/(?:deuda vencida\s*(?:SBS\s*\/?\s*Microfinanzas)?|overdueDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
- const overdueDocs=reportCapture(text,[/(?:monto(?: de)? documentos vencidos|overdueDocumentAmount)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
- const overdueDays=reportCapture(text,[/(?:d[ií]as de vencimiento(?: del documento)?|overdueDocumentDays)\s*[:\-]?\s*(\d{1,4})/i]);
+ const quickDebt=reportCapture(text,[
+  /(?:deuda vigente\s*(?:·|-)?\s*consulta r[aá]pida|currentDebtQuickQuery)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
+  /Consulta R[aá]pida.{0,700}?\b([\d]{1,3}(?:,[\d]{3})*\.\d{2})\b/i
+ ]);
+ const currentDebt=reportCapture(text,[
+  /(?:deuda vigente\s*(?:SBS\s*\/?\s*Microfinanzas)?|currentDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
+  /Posici[oó]n Hist[oó]rica.{0,900}?\b\d{2}\/\d{2}\/\d{4}\s+\d+(?:\.\d+)?\s+\d+\s+([\d]{1,3}(?:,[\d]{3})*\.\d{2})\b/i
+ ]);
+ const overdueDebt=reportCapture(text,[
+  /(?:deuda vencida\s*(?:SBS\s*\/?\s*Microfinanzas)?|overdueDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i
+ ]);
+ const overdueDocs=reportCapture(text,[
+  /(?:monto(?: de)? documentos vencidos|overdueDocumentAmount)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
+  /Documentos Impagos.{0,140}?\b([\d]{1,3}(?:,[\d]{3})*\.\d{2})\b/i
+ ]);
+ const overdueDays=reportCapture(text,[
+  /(?:d[ií]as de vencimiento(?: del documento)?|overdueDocumentDays)\s*[:\-]?\s*(\d{1,4})/i,
+  /Documentos Impagos.{0,180}?\b[\d]{1,3}(?:,[\d]{3})*\.\d{2}\s+(\d{1,4})\b/i
+ ]);
  const bcpDays=reportCapture(text,[/(?:d[ií]as de atraso visibles? en BCP|visibleBCPOverdueDays)\s*[:\-]?\s*(\d{1,4})/i]);
  const protestedUnreg=reportCapture(text,[/(?:documentos protestados no regularizados|protestedDocumentsUnregularized)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
  const protestedReg=reportCapture(text,[/(?:documentos protestados regularizados|protestedDocumentsRegularized)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
