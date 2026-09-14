@@ -696,11 +696,20 @@ let localAiPromise=null;
 let localAiWorker=null;
 let localAiQueue=Promise.resolve();
 let localAiHardware=null;
-const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.85';
-const LOCAL_AI_MODEL_F16='Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
-const LOCAL_AI_MODEL_F32='Qwen2.5-1.5B-Instruct-q4f32_1-MLC';
+const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.82';
+const LOCAL_AI_CANDIDATES_F16=[
+ 'Qwen3-1.7B-q4f16_1-MLC',
+ 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
+ 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC'
+];
+const LOCAL_AI_CANDIDATES_F32=[
+ 'Qwen3-1.7B-q4f32_1-MLC',
+ 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC',
+ 'Qwen2.5-0.5B-Instruct-q4f32_1-MLC'
+];
 let localAiModelId='';
-const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-worker1';
+let localAiLastError='';
+const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-qwenstable1';
 
 function setLocalAiStatus(textValue,ok=false){
  const el=$('#aiStatus');
@@ -728,7 +737,7 @@ async function inspectLocalHardware(){
   result.webgpu=true;
   result.shaderF16=adapter.features?.has?.('shader-f16')||false;
   result.label=[info.vendor,info.architecture].filter(Boolean).join(' · ')||'WebGPU compatible';
-  result.detail='Qwen 2.5 1.5B · '+(result.shaderF16?'q4f16':'q4f32')+' · Web Worker';
+  result.detail='Qwen local · '+(result.shaderF16?'q4f16':'q4f32')+' · Web Worker';
  }catch(e){
   result.detail='WebGPU detectado, pero no se pudo inicializar el adaptador.';
  }
@@ -749,54 +758,57 @@ async function getLocalAiEngine(){
   renderHardwareStatus(hw);
   if(!hw.webgpu)throw new Error('WebGPU no disponible. Se usará el plan por reglas.');
 
-  setLocalAiStatus('Preparando Qwen local…');
+  setLocalAiStatus('Cargando catálogo estable de Qwen…');
   const webllm=await import(LOCAL_AI_MODULE);
-  localAiModelId=hw.shaderF16?LOCAL_AI_MODEL_F16:LOCAL_AI_MODEL_F32;
-  const quant=hw.shaderF16?'q4f16_1':'q4f32_1';
-  const modelRecord={
-   model:'https://huggingface.co/mlc-ai/'+localAiModelId,
-   model_id:localAiModelId,
-   model_lib:webllm.modelLibURLPrefix+webllm.modelVersion+'/Qwen2-1.5B-Instruct-'+quant+'_cs1k-webgpu.wasm',
-   low_resource_required:true,
-   vram_required_MB:hw.shaderF16?1629.75:1888.97,
-   overrides:{context_window_size:4096}
-  };
-  const appConfig={model_list:[modelRecord],cacheBackend:'cache'};
+  const ids=(webllm.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id).filter(Boolean);
+  const preferred=hw.shaderF16?LOCAL_AI_CANDIDATES_F16:LOCAL_AI_CANDIDATES_F32;
+  localAiModelId=preferred.find(id=>ids.includes(id))||LOCAL_AI_CANDIDATES_F16.find(id=>ids.includes(id))||'';
+  if(!localAiModelId){
+   const availableQwen=ids.filter(id=>/qwen/i.test(id)).slice(0,8).join(', ');
+   throw new Error('No se encontró un Qwen compatible en WebLLM 0.2.82.'+(availableQwen?' Disponibles: '+availableQwen:''));
+  }
 
   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
   localAiWorker=new Worker(LOCAL_AI_WORKER,{type:'module',name:'tioscore-local-ai'});
+  setLocalAiStatus('Descargando '+localAiModelId+'…');
   const engine=await webllm.CreateWebWorkerMLCEngine(
    localAiWorker,
    localAiModelId,
    {
-    appConfig,
-    logLevel:'INFO',
     initProgressCallback:p=>{
      const msg=localAiProgressText(p);
      setLocalAiStatus(msg);
      if(state.processUi==='drawer'&&state.drawerProcessing)updateProcessDetail(msg+' · descarga solo la primera vez.');
-    }
-   }
+    },
+    logLevel:'INFO'
+   },
+   {context_window_size:4096}
   );
 
   setLocalAiStatus('Verificando generación local…');
-  const test=await engine.chat.completions.create({
-   messages:[{role:'user',content:'Responde solamente con la palabra OK.'}],
-   temperature:0,
-   max_tokens:6
-  });
+  const test=await Promise.race([
+   engine.chat.completions.create({
+    messages:[{role:'user',content:'Responde solo: OK'}],
+    temperature:0,
+    max_tokens:5
+   }),
+   new Promise((_,reject)=>setTimeout(()=>reject(new Error('La autoprueba de Qwen superó 45 segundos.')),45000))
+  ]);
   const probe=String(test?.choices?.[0]?.message?.content||'').trim();
-  if(!probe)throw new Error('Qwen cargó, pero no produjo una respuesta en la autoprueba.');
+  if(!probe)throw new Error('Qwen cargó, pero no produjo texto en la autoprueba.');
 
   localAiEngine=engine;
-  setLocalAiStatus('Qwen local verificado · '+(hw.shaderF16?'q4f16':'q4f32'),true);
-  const testEl=$('#aiSelfTest');if(testEl)testEl.textContent='Correcta · respuesta local recibida';
+  localAiLastError='';
+  setLocalAiStatus('Qwen verificado · '+localAiModelId,true);
+  const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · '+probe.slice(0,30);testEl.className='ok'}
+  const modelEl=$('#aiModelActive');if(modelEl)modelEl.textContent=localAiModelId;
   return engine;
  })();
  try{return await localAiPromise}
  catch(e){
-  const msg=String(e?.message||e||'Error desconocido');
-  const testEl=$('#aiSelfTest');if(testEl)testEl.textContent='Falló · '+msg.slice(0,120);
+  localAiLastError=String(e?.message||e||'Error desconocido');
+  const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Falló · '+localAiLastError.slice(0,180);testEl.className=''}
+  setLocalAiStatus('Reglas activas · Qwen no inició');
   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
   localAiWorker=null;
   localAiEngine=null;
@@ -807,7 +819,7 @@ async function warmLocalAI(){
  const hw=await inspectLocalHardware();
  renderHardwareStatus(hw);
  if(!hw.webgpu){setLocalAiStatus('Reglas activas · sin WebGPU');return}
- try{await getLocalAiEngine()}catch(e){setLocalAiStatus('Reglas activas · IA local no disponible')}
+ try{await getLocalAiEngine()}catch(e){setLocalAiStatus('Reglas activas · '+String(e?.message||'Qwen no disponible').slice(0,90))}
 }
 function cleanLocalJson(s=''){
  const text=String(s||'').trim().replace(/^\`\`\`json\s*/i,'').replace(/\`\`\`$/,'').trim();
@@ -828,13 +840,13 @@ function normalizeLocalInterpretation(x){
 }
 async function runLocalInterpretation(analysis){
  const engine=await getLocalAiEngine();
- const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,6000);
- const system='Eres el asesor educativo de Tío Score en Perú. Trabajas solo con datos ya extraídos de un reporte crediticio. Nunca modifiques ni inventes cifras. No prometas aprobación de créditos, eliminación de registros ni aumento del score. Prioriza hechos verificables, deuda vencida, atrasos, protestos, capacidad de pago, obligaciones tributarias/laborales y evolución. El seguimiento debe servir para una próxima asesoría personalizada. Responde SOLO JSON válido.';
+ const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,3200);
+ const system='Asesor educativo de Tío Score, Perú. Usa solo los datos recibidos. No inventes ni cambies cifras. No prometas aprobación ni eliminación de registros. Devuelve SOLO JSON válido.';
  const user='Genera interpretación, plan y seguimiento personalizado. Estructura exacta: {"scoreDescription":"","summary":"","tags":[""],"alerts":[{"level":"red|yellow|green","title":"","text":""}],"recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],"closing":{"headline":"Conclusión de la lectura","text":""},"checklist":[""],"followUp":{"timeframe":"","objective":"","nextReview":"","verificationPoints":[""],"questions":[""]}}. Usa 2-5 alertas, 3-5 recomendaciones, 3-6 verificaciones y 2-5 preguntas para la próxima asesoría. DATOS: '+payload;
  const reply=await engine.chat.completions.create({
   messages:[{role:'system',content:system},{role:'user',content:user}],
   temperature:0.1,
-  max_tokens:800
+  max_tokens:650
  });
  const text=reply?.choices?.[0]?.message?.content||'';
  return normalizeLocalInterpretation(JSON.parse(cleanLocalJson(text)));
@@ -1616,12 +1628,22 @@ function renderHistory(){
 }
 $('#historySearch')?.addEventListener('input',e=>{state.historyFilter=e.target.value||'';renderHistory()});
 
+async function retryLocalAI(){
+ setLocalAiStatus('Reiniciando Qwen…');
+ const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Reintentando…';testEl.className=''}
+ try{if(localAiWorker)localAiWorker.terminate()}catch{}
+ localAiWorker=null;localAiEngine=null;localAiPromise=null;localAiLastError='';
+ try{await getLocalAiEngine()}catch{}
+}
+$('#retryLocalAi')?.addEventListener('click',retryLocalAI);
+
 async function checkAIStatus(){
  const hw=await inspectLocalHardware();
  renderHardwareStatus(hw);
  if(!hw.webgpu){setLocalAiStatus('Reglas activas · sin WebGPU');return}
- if(localAiEngine)setLocalAiStatus('Qwen local verificado',true);
- else setLocalAiStatus('Qwen 2.5 1.5B · pendiente de carga');
+ if(localAiEngine)setLocalAiStatus('Qwen verificado · '+localAiModelId,true);
+ else if(localAiLastError)setLocalAiStatus('Reglas activas · Qwen falló');
+ else setLocalAiStatus('Qwen · pendiente de autoprueba');
 }
 
 bootstrap();
