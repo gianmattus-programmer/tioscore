@@ -725,6 +725,9 @@ function buildSentinelDeepAnalysis(text='',analysisMode='deep'){
 
 function parseSentinelReport(source,meta={}){
  const text=String(source||'').replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
+ const analysisMode=meta.analysisMode==='fast'?'fast':'deep';
+ const deepAnalysis=buildSentinelDeepAnalysis(text,analysisMode);
+ const historySample=deepAnalysis?sampleHistoricalRows(deepAnalysis.history||[],24):[];
  const raw={};
  const add=(label,value)=>{if(value!==''&&value!=null&&!/^(?:no informado|no registrado)$/i.test(String(value).trim()))raw[label]=String(value).trim()};
  const name=extractPersonName(text);
@@ -802,6 +805,13 @@ function parseSentinelReport(source,meta={}){
  add('Última actualización SUNAT',sunatUpdate);
  add('Páginas del reporte',reportPages);
  if(institutions.length)add('Entidades detectadas',institutions.join(' · '));
+ if(deepAnalysis){
+  add('Registros históricos analizados',deepAnalysis.observations||'');
+  if(deepAnalysis.peakDebt)add('Pico histórico de deuda',reportMoney(deepAnalysis.peakDebt));
+  if(deepAnalysis.peakDebtDate)add('Fecha del pico de deuda',deepAnalysis.peakDebtDate);
+  if(deepAnalysis.debtReductionFromPeak!=null)add('Reducción desde el pico',deepAnalysis.debtReductionFromPeak.toFixed(1)+'%');
+  if(deepAnalysis.creditor)add('Acreedor del documento impago',deepAnalysis.creditor);
+ }
 
  let points=0;
  if(/\bsentinel\b/i.test(text))points+=10;
@@ -831,6 +841,10 @@ function parseSentinelReport(source,meta={}){
  if(current!=null)obligations.push({entity:'Sistema financiero',product:'Deuda vigente',balance:reportMoney(current),status:'Vigente',detail:'Monto global identificado en el reporte'});
  if(overdue!=null&&overdue>0)obligations.push({entity:'Sistema financiero',product:'Deuda vencida',balance:reportMoney(overdue),status:'Vencida',detail:(overdueDays||bcpDays)?'Atraso detectado: '+Math.max(Number(overdueDays)||0,Number(bcpDays)||0)+' días':'Monto vencido identificado'});
  if(docs!=null&&docs>0)obligations.push({entity:'Documentos',product:'Documentos vencidos',balance:reportMoney(docs),status:'Vencida',detail:'Documentos impagos identificados'});
+ if(deepAnalysis?.creditor&&deepAnalysis.currentUnpaidDocs>0){
+  obligations.push({entity:deepAnalysis.creditor,product:'Documento impago',balance:reportMoney(deepAnalysis.currentUnpaidDocs),status:'Vencida',detail:(deepAnalysis.creditorDays?deepAnalysis.creditorDays+' días de vencimiento':'Atraso identificado')});
+  entities.push({name:deepAnalysis.creditor,type:'Acreedor comercial',product:'Documento impago',balance:reportMoney(deepAnalysis.currentUnpaidDocs),status:'Vencida',daysPastDue:deepAnalysis.creditorDays?deepAnalysis.creditorDays+' días':'',classification:'Comercial',limit:'',monthlyPayment:''});
+ }
 
  const financialLabels=new Set(['Score Experian','Nivel del score','Bancarizado','Capacidad de pago mensual','Deuda vigente · Consulta rápida','Deuda vigente SBS / Microfinanzas','Deuda vencida SBS / Microfinanzas','Monto de documentos vencidos','Días de vencimiento del documento','Días de atraso visibles en BCP','Documentos protestados no regularizados','Documentos protestados regularizados']);
  const taxLabels=new Set(['Deuda tributaria','Deuda laboral','Actividad económica principal','Condición del contribuyente','Estado del contribuyente','Tipo de contribuyente','Última actualización SUNAT']);
@@ -838,6 +852,16 @@ function parseSentinelReport(source,meta={}){
  const reportSections=[];
  const financialItems=toItems(financialLabels);if(financialItems.length)reportSections.push({title:'Situación financiera',items:financialItems});
  const taxItems=toItems(taxLabels);if(taxItems.length)reportSections.push({title:'Información tributaria y comercial',items:taxItems});
+ if(deepAnalysis){
+  const histItems=[
+   {label:'Observaciones históricas',value:String(deepAnalysis.observations||0)},
+   {label:'Pico de deuda',value:deepAnalysis.peakDebt?reportMoney(deepAnalysis.peakDebt)+' · '+deepAnalysis.peakDebtDate:'No determinado'},
+   {label:'Pico de vencido SBS',value:deepAnalysis.peakOverdue?reportMoney(deepAnalysis.peakOverdue)+' · '+deepAnalysis.peakOverdueDate:'S/ 0.00'},
+   {label:'Reducción desde el pico',value:deepAnalysis.debtReductionFromPeak!=null?deepAnalysis.debtReductionFromPeak.toFixed(1)+'%':'No determinada'},
+   {label:'Señales rojas históricas',value:String(deepAnalysis.redPeriods||0)}
+  ];
+  reportSections.push({title:'Lectura histórica profunda',items:histItems});
+ }
 
  const metrics=[];
  if(score)metrics.push({value:String(score),label:'Score Experian'});
@@ -846,13 +870,27 @@ function parseSentinelReport(source,meta={}){
  if(docs!=null)metrics.push({value:reportMoney(docs),label:'Documentos vencidos',danger:docs>0});
  if(overdueDays||bcpDays)metrics.push({value:String(Math.max(Number(overdueDays)||0,Number(bcpDays)||0)),label:'Máx. días de atraso',danger:true});
  if(capacity)metrics.push({value:capacity,label:'Capacidad de pago'});
+ if(deepAnalysis?.peakDebt)metrics.push({value:reportMoney(deepAnalysis.peakDebt),label:'Pico histórico'});
+ if(deepAnalysis?.debtReductionFromPeak!=null)metrics.push({value:deepAnalysis.debtReductionFromPeak.toFixed(1)+'%',label:'Reducción desde pico'});
+ if(deepAnalysis?.observations)metrics.push({value:String(deepAnalysis.observations),label:'Registros históricos'});
+ if(deepAnalysis?.redPeriods)metrics.push({value:String(deepAnalysis.redPeriods),label:'Señales rojas',danger:true});
 
+ const debtSeries=historySample.map(r=>({label:sentinelDateLabel(r.date),value:r.totalDebt}));
+ const monthlyBehavior=historySample.map(r=>({period:sentinelDateLabel(r.date),status:r.signal>2?'ROJO':r.signal>=.001?'AMARILLO':'VERDE',daysPastDue:0,balance:r.totalDebt}));
+ const noteEvolution=historySample.map(r=>({label:sentinelDateLabel(r.date),value:r.signal}));
+ const overdueByType=historySample.map(r=>({label:sentinelDateLabel(r.date),sbs:r.overdueSbs,other:(r.otherOverdue||0)+(r.unpaidDocs||0)}));
+ const currentVsOverdue=historySample.map(r=>({label:sentinelDateLabel(r.date),current:Math.max(0,(r.totalDebt||0)-(r.overdueSbs||0)),overdue:r.overdueSbs||0}));
+ const recentForShare=(deepAnalysis?.history||[]).slice(0,24);
+ const sumSbs=recentForShare.reduce((s,r)=>s+(r.overdueSbs||0),0);
+ const sumOther=recentForShare.reduce((s,r)=>s+(r.otherOverdue||0)+(r.unpaidDocs||0),0);
+ const overdueShare=(sumSbs+sumOther)>0?[{label:'Vencidos + SBS',value:sumSbs},{label:'Otros + Doc. impagos',value:sumOther}]:[];
+ const periodCovered=deepAnalysis?.history?.length?[deepAnalysis.history.at(-1)?.date,deepAnalysis.latestDate].filter(Boolean).join(' → '):'';
  const analysis={
-  sourceReport:{provider:/\bsentinel\b/i.test(text)?'Sentinel':'Reporte detectado',type:'Reporte crediticio',reportDate:updated||creation||'',periodCovered:'',sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local'},
+  sourceReport:{provider:/\bsentinel\b/i.test(text)?'Sentinel':'Reporte detectado',type:'Reporte crediticio',reportDate:updated||creation||'',periodCovered,sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local',analysisMode},
   client:{name:firstName(name||'Cliente'),document:protectedDocument(dni||ruc)||'Documento protegido',age:'',reportDate:updated||creation||'',entities:institutions.join(' · ')},
-  score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,
-  metrics,debtSeries:[],debtComposition,monthlyBehavior:[],entities,obligations,inquiries:[],raw,reportSections,
-  reportCharts:{noteEvolution:[],classificationHistory:[],overdueByType:[],overdueShare:[],currentVsOverdue:[],institutionShare:debtComposition}
+  score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,deepAnalysis,
+  metrics,debtSeries,debtComposition,monthlyBehavior,entities,obligations,inquiries:[],raw,reportSections,
+  reportCharts:{noteEvolution,classificationHistory:[],overdueByType,overdueShare,currentVsOverdue,institutionShare:[]}
  };
  Object.assign(analysis,buildRuleInterpretation(analysis));
  analysis.sourceReport.interpretationEngine='Reglas locales';
