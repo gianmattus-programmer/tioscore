@@ -669,14 +669,25 @@ function parseSentinelReport(source,meta={}){
  return {analysis,parserConfidence};
 }
 function interpretationPayload(a){
+ const raw=a.raw||{};
+ const keep=[
+  'Score Experian','Nivel del score','Bancarizado','Capacidad de pago mensual',
+  'Deuda vigente · Consulta rápida','Deuda vigente SBS / Microfinanzas',
+  'Deuda vencida SBS / Microfinanzas','Monto de documentos vencidos',
+  'Días de vencimiento del documento','Días de atraso visibles en BCP',
+  'Documentos protestados no regularizados','Documentos protestados regularizados',
+  'Deuda tributaria','Deuda laboral','Condición del contribuyente',
+  'Estado del contribuyente','Entidades detectadas'
+ ];
+ const datos={};
+ for(const k of keep)if(raw[k]!=null&&String(raw[k]).trim()!=='')datos[k]=raw[k];
  return {
   score:a.score,
-  scoreLevel:getScoreBand(a.score).category,
-  confidence:a.confidence,
-  datos:a.raw,
-  metricas:(a.metrics||[]).slice(0,12),
-  entidades:(a.entities||[]).slice(0,15).map(x=>({nombre:x.name,producto:x.product,saldo:x.balance,estado:x.status||x.classification})),
-  obligaciones:(a.obligations||[]).slice(0,20).map(x=>({entidad:x.entity,producto:x.product,saldo:x.balance,estado:x.status,detalle:x.detail}))
+  nivel:getScoreBand(a.score).category,
+  confianza:a.confidence,
+  datos,
+  entidades:(a.entities||[]).slice(0,8).map(x=>({n:x.name,p:x.product,s:x.balance,e:x.status||x.classification})),
+  obligaciones:(a.obligations||[]).slice(0,10).map(x=>({e:x.entity,p:x.product,s:x.balance,st:x.status,d:x.detail}))
  };
 }
 
@@ -686,7 +697,9 @@ let localAiWorker=null;
 let localAiQueue=Promise.resolve();
 let localAiHardware=null;
 const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.85';
-const LOCAL_AI_MODEL='Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
+const LOCAL_AI_MODEL_F16='Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
+const LOCAL_AI_MODEL_F32='Qwen2.5-1.5B-Instruct-q4f32_1-MLC';
+let localAiModelId='';
 const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-worker1';
 
 function setLocalAiStatus(textValue,ok=false){
@@ -702,7 +715,7 @@ function localAiProgressText(p){
 }
 async function inspectLocalHardware(){
  if(localAiHardware)return localAiHardware;
- const result={webgpu:false,label:'No disponible',detail:''};
+ const result={webgpu:false,shaderF16:false,label:'No disponible',detail:''};
  if(!('gpu' in navigator)){
   result.detail='El navegador no expone WebGPU.';
   localAiHardware=result;
@@ -713,8 +726,9 @@ async function inspectLocalHardware(){
   if(!adapter){result.detail='No se encontró un adaptador WebGPU.';localAiHardware=result;return result}
   const info=adapter.info||{};
   result.webgpu=true;
+  result.shaderF16=adapter.features?.has?.('shader-f16')||false;
   result.label=[info.vendor,info.architecture].filter(Boolean).join(' · ')||'WebGPU compatible';
-  result.detail='Modelo fijo: '+LOCAL_AI_MODEL+' · ejecución en Web Worker';
+  result.detail='Qwen 2.5 1.5B · '+(result.shaderF16?'q4f16':'q4f32')+' · Web Worker';
  }catch(e){
   result.detail='WebGPU detectado, pero no se pudo inicializar el adaptador.';
  }
@@ -735,19 +749,28 @@ async function getLocalAiEngine(){
   renderHardwareStatus(hw);
   if(!hw.webgpu)throw new Error('WebGPU no disponible. Se usará el plan por reglas.');
 
-  setLocalAiStatus('Preparando modelo fijo…');
+  setLocalAiStatus('Preparando Qwen local…');
   const webllm=await import(LOCAL_AI_MODULE);
-  const available=(webllm.prebuiltAppConfig?.model_list||[]).some(x=>x.model_id===LOCAL_AI_MODEL);
-  if(!available)throw new Error('El modelo local fijo no está disponible en esta versión de WebLLM.');
+  localAiModelId=hw.shaderF16?LOCAL_AI_MODEL_F16:LOCAL_AI_MODEL_F32;
+  const quant=hw.shaderF16?'q4f16_1':'q4f32_1';
+  const modelRecord={
+   model:'https://huggingface.co/mlc-ai/'+localAiModelId,
+   model_id:localAiModelId,
+   model_lib:webllm.modelLibURLPrefix+webllm.modelVersion+'/Qwen2-1.5B-Instruct-'+quant+'_cs1k-webgpu.wasm',
+   low_resource_required:true,
+   vram_required_MB:hw.shaderF16?1629.75:1888.97,
+   overrides:{context_window_size:4096}
+  };
+  const appConfig={model_list:[modelRecord],cacheBackend:'cache'};
 
   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
   localAiWorker=new Worker(LOCAL_AI_WORKER,{type:'module',name:'tioscore-local-ai'});
-  const appConfig={...webllm.prebuiltAppConfig,cacheBackend:'indexeddb'};
   const engine=await webllm.CreateWebWorkerMLCEngine(
    localAiWorker,
-   LOCAL_AI_MODEL,
+   localAiModelId,
    {
     appConfig,
+    logLevel:'INFO',
     initProgressCallback:p=>{
      const msg=localAiProgressText(p);
      setLocalAiStatus(msg);
@@ -755,14 +778,28 @@ async function getLocalAiEngine(){
     }
    }
   );
+
+  setLocalAiStatus('Verificando generación local…');
+  const test=await engine.chat.completions.create({
+   messages:[{role:'user',content:'Responde solamente con la palabra OK.'}],
+   temperature:0,
+   max_tokens:6
+  });
+  const probe=String(test?.choices?.[0]?.message?.content||'').trim();
+  if(!probe)throw new Error('Qwen cargó, pero no produjo una respuesta en la autoprueba.');
+
   localAiEngine=engine;
-  setLocalAiStatus('Lista · Qwen 2.5 1.5B',true);
+  setLocalAiStatus('Qwen local verificado · '+(hw.shaderF16?'q4f16':'q4f32'),true);
+  const testEl=$('#aiSelfTest');if(testEl)testEl.textContent='Correcta · respuesta local recibida';
   return engine;
  })();
  try{return await localAiPromise}
  catch(e){
+  const msg=String(e?.message||e||'Error desconocido');
+  const testEl=$('#aiSelfTest');if(testEl)testEl.textContent='Falló · '+msg.slice(0,120);
   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
   localAiWorker=null;
+  localAiEngine=null;
   throw e;
  }finally{localAiPromise=null}
 }
@@ -791,14 +828,13 @@ function normalizeLocalInterpretation(x){
 }
 async function runLocalInterpretation(analysis){
  const engine=await getLocalAiEngine();
- const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,12000);
+ const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,6000);
  const system='Eres el asesor educativo de Tío Score en Perú. Trabajas solo con datos ya extraídos de un reporte crediticio. Nunca modifiques ni inventes cifras. No prometas aprobación de créditos, eliminación de registros ni aumento del score. Prioriza hechos verificables, deuda vencida, atrasos, protestos, capacidad de pago, obligaciones tributarias/laborales y evolución. El seguimiento debe servir para una próxima asesoría personalizada. Responde SOLO JSON válido.';
  const user='Genera interpretación, plan y seguimiento personalizado. Estructura exacta: {"scoreDescription":"","summary":"","tags":[""],"alerts":[{"level":"red|yellow|green","title":"","text":""}],"recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],"closing":{"headline":"Conclusión de la lectura","text":""},"checklist":[""],"followUp":{"timeframe":"","objective":"","nextReview":"","verificationPoints":[""],"questions":[""]}}. Usa 2-5 alertas, 3-5 recomendaciones, 3-6 verificaciones y 2-5 preguntas para la próxima asesoría. DATOS: '+payload;
  const reply=await engine.chat.completions.create({
   messages:[{role:'system',content:system},{role:'user',content:user}],
-  temperature:0.15,
-  max_tokens:1200,
-  response_format:{type:'json_object'}
+  temperature:0.1,
+  max_tokens:800
  });
  const text=reply?.choices?.[0]?.message?.content||'';
  return normalizeLocalInterpretation(JSON.parse(cleanLocalJson(text)));
@@ -850,11 +886,14 @@ async function processPdf(file,{background=false}={}){
    local.sourceReport.interpretationEngine='IA local · Qwen 2.5 1.5B';
    local.sourceReport.interpretationError='';
    local.sourceReport.parserMode=parsed.parserConfidence>=70
-    ?'Parser local + IA local · Qwen 2.5 1.5B'
+    ?'Parser local + IA local · '+(localAiModelId||'Qwen 2.5 1.5B')
     :'Parser/OCR local parcial + IA local';
   }catch(err){
+   const aiErr=String(err?.message||err||'IA local no disponible');
+   setLocalAiStatus('Reglas activas · Qwen falló');
+   const self=$('#aiSelfTest');if(self)self.textContent='Falló · '+aiErr.slice(0,120);
    local.sourceReport.interpretationEngine='Reglas locales';
-   local.sourceReport.interpretationError=String(err?.message||err||'IA local no disponible');
+   local.sourceReport.interpretationError=aiErr;
    local.sourceReport.parserMode=parsed.parserConfidence>=70
     ?'Parser local · interpretación por reglas'
     :'Parser/OCR local parcial · reglas de respaldo';
@@ -1581,7 +1620,7 @@ async function checkAIStatus(){
  const hw=await inspectLocalHardware();
  renderHardwareStatus(hw);
  if(!hw.webgpu){setLocalAiStatus('Reglas activas · sin WebGPU');return}
- if(localAiEngine)setLocalAiStatus('Lista · Qwen 2.5 1.5B',true);
+ if(localAiEngine)setLocalAiStatus('Qwen local verificado',true);
  else setLocalAiStatus('Qwen 2.5 1.5B · pendiente de carga');
 }
 
