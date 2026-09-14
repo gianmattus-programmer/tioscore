@@ -777,6 +777,14 @@ let localAiPromise=null;
 let localAiWorker=null;
 let localAiQueue=Promise.resolve();
 let localAiHardware=null;
+let localAiBackend='';
+let localAiModelId='';
+let localAiLastError='';
+let localAiGpuError='';
+let cpuQwenWorker=null;
+let cpuQwenSeq=0;
+const cpuQwenPending=new Map();
+
 const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.85';
 const LOCAL_AI_CANDIDATES_F16=[
  'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
@@ -788,15 +796,22 @@ const LOCAL_AI_CANDIDATES_F32=[
  'Qwen3-0.6B-q4f32_1-MLC',
  'Qwen2.5-1.5B-Instruct-q4f32_1-MLC'
 ];
-let localAiModelId='';
-let localAiLastError='';
 const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-qwenreal1';
+const CPU_QWEN_WORKER='/admin/qwen-cpu-worker.js?v=20260914-qwencpu1';
 
 function setLocalAiStatus(textValue,ok=false){
  const el=$('#aiStatus');
  if(!el)return;
  el.textContent=textValue;
  el.className=ok?'ok':'';
+}
+function setInlineAiMessage(message='',kind='error'){
+ const el=$('#aiInlineError');if(!el)return;
+ const text=String(message||'').trim();
+ if(!text){el.textContent='';el.className='ai-inline-error hidden';el.title='';return}
+ el.textContent=text.length>150?text.slice(0,147)+'…':text;
+ el.title=text;
+ el.className='ai-inline-error '+(kind==='info'?'info':kind==='ok'?'ok':'');
 }
 function localAiProgressText(p){
  const raw=String(p?.text||p?.status||'Cargando IA local…');
@@ -807,29 +822,128 @@ async function inspectLocalHardware(){
  if(localAiHardware)return localAiHardware;
  const result={webgpu:false,shaderF16:false,label:'No disponible',detail:''};
  if(!('gpu' in navigator)){
-  result.detail='El navegador no expone WebGPU.';
+  result.detail='WebGPU no está disponible en este navegador/equipo.';
   localAiHardware=result;
   return result;
  }
  try{
   const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
-  if(!adapter){result.detail='No se encontró un adaptador WebGPU.';localAiHardware=result;return result}
+  if(!adapter){result.detail='WebGPU existe, pero no se encontró un adaptador compatible.';localAiHardware=result;return result}
   const info=adapter.info||{};
   result.webgpu=true;
   result.shaderF16=adapter.features?.has?.('shader-f16')||false;
   result.label=[info.vendor,info.architecture].filter(Boolean).join(' · ')||'WebGPU compatible';
   result.detail='Qwen local · '+(result.shaderF16?'q4f16':'q4f32')+' · Web Worker';
  }catch(e){
-  result.detail='WebGPU detectado, pero no se pudo inicializar el adaptador.';
+  result.detail='WebGPU detectado, pero falló la inicialización del adaptador.';
  }
  localAiHardware=result;
  return result;
 }
 function renderHardwareStatus(hw){
- const el=$('#aiHardware');
- if(!el)return;
- el.textContent=hw.webgpu?(hw.label+' · compatible'):(hw.detail||'No compatible');
+ const el=$('#aiHardware');if(!el)return;
+ el.textContent=hw.webgpu?(hw.label+' · compatible'):(hw.detail||'No compatible · se usará CPU/WASM');
  el.className=hw.webgpu?'ok':'';
+}
+function cpuWorker(){
+ if(cpuQwenWorker)return cpuQwenWorker;
+ const worker=new Worker(CPU_QWEN_WORKER,{type:'module',name:'tioscore-qwen-cpu'});
+ worker.onmessage=e=>{
+  const msg=e.data||{},pending=cpuQwenPending.get(msg.id);
+  if(!pending)return;
+  if(msg.type==='status'){
+   setLocalAiStatus(msg.message||'Qwen CPU…');
+   setInlineAiMessage(msg.message||'Preparando Qwen CPU…','info');
+   return;
+  }
+  if(msg.type==='progress'){
+   const pct=Number(msg.progress);
+   const p=Number.isFinite(pct)?Math.max(0,Math.min(100,Math.round(pct))):null;
+   const label='Qwen CPU'+(p!=null?' · '+p+'%':'')+' · '+String(msg.message||'descargando');
+   setLocalAiStatus(label);
+   setInlineAiMessage(label,'info');
+   return;
+  }
+  clearTimeout(pending.timer);
+  cpuQwenPending.delete(msg.id);
+  if(msg.type==='error')pending.reject(new Error(msg.message||'Error Qwen CPU'));
+  else pending.resolve(msg);
+ };
+ worker.onerror=e=>{
+  const err=new Error(e?.message||'No se pudo iniciar el Worker de Qwen CPU.');
+  for(const [id,p] of cpuQwenPending){clearTimeout(p.timer);p.reject(err);cpuQwenPending.delete(id)}
+ };
+ cpuQwenWorker=worker;
+ return worker;
+}
+function cpuQwenRequest(type,payload={},timeoutMs=600000){
+ const worker=cpuWorker();
+ const id='cpu-'+Date.now()+'-'+(++cpuQwenSeq);
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{
+   cpuQwenPending.delete(id);
+   reject(new Error('Qwen CPU superó el tiempo máximo de espera.'));
+  },timeoutMs);
+  cpuQwenPending.set(id,{resolve,reject,timer});
+  worker.postMessage({id,type,...payload});
+ });
+}
+async function initWebGpuQwen(hw){
+ setLocalAiStatus('Cargando Qwen 0.5B por WebGPU…');
+ const webllm=await import(LOCAL_AI_MODULE);
+ const ids=(webllm.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id).filter(Boolean);
+ const preferred=hw.shaderF16?LOCAL_AI_CANDIDATES_F16:LOCAL_AI_CANDIDATES_F32;
+ localAiModelId=preferred.find(id=>ids.includes(id))||'';
+ if(!localAiModelId){
+  const availableQwen=ids.filter(id=>/qwen/i.test(id)).slice(0,8).join(', ');
+  throw new Error('Qwen 0.5B no aparece en el catálogo WebLLM 0.2.85.'+(availableQwen?' Qwen disponibles: '+availableQwen:''));
+ }
+
+ if(localAiWorker){try{localAiWorker.terminate()}catch{}}
+ localAiWorker=new Worker(LOCAL_AI_WORKER,{type:'module',name:'tioscore-local-ai'});
+ const engine=await webllm.CreateWebWorkerMLCEngine(
+  localAiWorker,
+  localAiModelId,
+  {
+   initProgressCallback:p=>{
+    const msg=localAiProgressText(p);
+    setLocalAiStatus(msg);
+    setInlineAiMessage(msg,'info');
+   },
+   logLevel:'WARN'
+  },
+  {context_window_size:4096}
+ );
+ setLocalAiStatus('Verificando Qwen WebGPU…');
+ const test=await Promise.race([
+  engine.chat.completions.create({messages:[{role:'user',content:'Responde solo: OK'}],temperature:0,max_tokens:5}),
+  new Promise((_,reject)=>setTimeout(()=>reject(new Error('La autoprueba WebGPU superó 60 segundos.')),60000))
+ ]);
+ const probe=String(test?.choices?.[0]?.message?.content||'').trim();
+ if(!probe)throw new Error('Qwen WebGPU cargó, pero no produjo texto.');
+ localAiBackend='webgpu';
+ localAiEngine=engine;
+ localAiGpuError='';
+ localAiLastError='';
+ setLocalAiStatus('Qwen WebGPU verificado · '+localAiModelId,true);
+ setInlineAiMessage('Qwen funcionando por WebGPU.','ok');
+ const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · WebGPU · '+probe.slice(0,20);testEl.className='ok'}
+ const modelEl=$('#aiModelActive');if(modelEl)modelEl.textContent=localAiModelId;
+ return engine;
+}
+async function initCpuQwen(reason=''){
+ if(reason)setInlineAiMessage('WebGPU no disponible: '+reason+' · iniciando Qwen por CPU/WASM.','info');
+ setLocalAiStatus('Preparando Qwen CPU/WASM…');
+ const ready=await cpuQwenRequest('init',{},600000);
+ localAiBackend='cpu';
+ localAiModelId=String(ready.model||'Qwen2.5-0.5B-Instruct')+' · CPU/WASM';
+ localAiEngine={kind:'cpu'};
+ localAiLastError='';
+ setLocalAiStatus('Qwen CPU verificado',true);
+ setInlineAiMessage('Qwen funcionando por CPU/WASM.','ok');
+ const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · CPU/WASM · '+String(ready.probe||'OK').slice(0,20);testEl.className='ok'}
+ const modelEl=$('#aiModelActive');if(modelEl)modelEl.textContent=localAiModelId;
+ return localAiEngine;
 }
 async function getLocalAiEngine(){
  if(localAiEngine)return localAiEngine;
@@ -837,70 +951,36 @@ async function getLocalAiEngine(){
  localAiPromise=(async()=>{
   const hw=await inspectLocalHardware();
   renderHardwareStatus(hw);
-  if(!hw.webgpu)throw new Error('WebGPU no disponible. Se usará el plan por reglas.');
-
-  setLocalAiStatus('Cargando Qwen 0.5B…');
-  const webllm=await import(LOCAL_AI_MODULE);
-  const ids=(webllm.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id).filter(Boolean);
-  const preferred=hw.shaderF16?LOCAL_AI_CANDIDATES_F16:LOCAL_AI_CANDIDATES_F32;
-  localAiModelId=preferred.find(id=>ids.includes(id))||LOCAL_AI_CANDIDATES_F16.find(id=>ids.includes(id))||'';
-  if(!localAiModelId){
-   const availableQwen=ids.filter(id=>/qwen/i.test(id)).slice(0,8).join(', ');
-   throw new Error('No se encontró un Qwen compatible en WebLLM 0.2.85.'+(availableQwen?' Disponibles: '+availableQwen:''));
+  let gpuReason='';
+  if(hw.webgpu){
+   try{return await initWebGpuQwen(hw)}
+   catch(e){
+    gpuReason=String(e?.message||e||'fallo WebGPU');
+    localAiGpuError=gpuReason;
+    if(localAiWorker){try{localAiWorker.terminate()}catch{}}
+    localAiWorker=null;
+    setInlineAiMessage('Qwen WebGPU falló: '+gpuReason+' · probando CPU/WASM.','info');
+   }
+  }else{
+   gpuReason=hw.detail||'WebGPU no disponible';
+   localAiGpuError=gpuReason;
   }
-
-  if(localAiWorker){try{localAiWorker.terminate()}catch{}}
-  localAiWorker=new Worker(LOCAL_AI_WORKER,{type:'module',name:'tioscore-local-ai'});
-  setLocalAiStatus('Descargando '+localAiModelId+'…');
-  const engine=await webllm.CreateWebWorkerMLCEngine(
-   localAiWorker,
-   localAiModelId,
-   {
-    initProgressCallback:p=>{
-     const msg=localAiProgressText(p);
-     setLocalAiStatus(msg);
-     if(state.processUi==='drawer'&&state.drawerProcessing)updateProcessDetail(msg+' · descarga solo la primera vez.');
-    },
-    logLevel:'INFO'
-   },
-   {context_window_size:4096}
-  );
-
-  setLocalAiStatus('Verificando generación local…');
-  const test=await Promise.race([
-   engine.chat.completions.create({
-    messages:[{role:'user',content:'Responde solo: OK'}],
-    temperature:0,
-    max_tokens:5
-   }),
-   new Promise((_,reject)=>setTimeout(()=>reject(new Error('La autoprueba de Qwen superó 45 segundos.')),45000))
-  ]);
-  const probe=String(test?.choices?.[0]?.message?.content||'').trim();
-  if(!probe)throw new Error('Qwen cargó, pero no produjo texto en la autoprueba.');
-
-  localAiEngine=engine;
-  localAiLastError='';
-  setLocalAiStatus('Qwen verificado · '+localAiModelId,true);
-  const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · '+probe.slice(0,30);testEl.className='ok'}
-  const modelEl=$('#aiModelActive');if(modelEl)modelEl.textContent=localAiModelId;
-  return engine;
+  try{return await initCpuQwen(gpuReason)}
+  catch(e){
+   const cpuErr=String(e?.message||e||'fallo CPU/WASM');
+   localAiLastError='WebGPU: '+gpuReason+' | CPU/WASM: '+cpuErr;
+   setLocalAiStatus('Qwen local no disponible');
+   setInlineAiMessage(localAiLastError,'error');
+   const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Falló · '+localAiLastError.slice(0,180);testEl.className=''}
+   localAiEngine=null;localAiBackend='';
+   throw new Error(localAiLastError);
+  }
  })();
  try{return await localAiPromise}
- catch(e){
-  localAiLastError=String(e?.message||e||'Error desconocido');
-  const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Falló · '+localAiLastError.slice(0,180);testEl.className=''}
-  setLocalAiStatus('Reglas activas · Qwen no inició');
-  if(localAiWorker){try{localAiWorker.terminate()}catch{}}
-  localAiWorker=null;
-  localAiEngine=null;
-  throw e;
- }finally{localAiPromise=null}
+ finally{localAiPromise=null}
 }
 async function warmLocalAI(){
- const hw=await inspectLocalHardware();
- renderHardwareStatus(hw);
- if(!hw.webgpu){setLocalAiStatus('Reglas activas · sin WebGPU');return}
- try{await getLocalAiEngine()}catch(e){setLocalAiStatus('Reglas activas · '+String(e?.message||'Qwen no disponible').slice(0,90))}
+ try{await getLocalAiEngine()}catch{}
 }
 function cleanLocalJson(s=''){
  const text=String(s||'').trim().replace(/^\`\`\`json\s*/i,'').replace(/\`\`\`$/,'').trim();
@@ -919,18 +999,39 @@ function normalizeLocalInterpretation(x){
  v.followUp.questions=Array.isArray(v.followUp.questions)?v.followUp.questions:[];
  return v;
 }
+function mergeQwenNarrative(analysis,narrative){
+ const base=buildRuleInterpretation(analysis);
+ const n=narrative&&typeof narrative==='object'?narrative:{};
+ if(n.scoreDescription)base.scoreDescription=String(n.scoreDescription);
+ if(n.summary)base.summary=String(n.summary);
+ if(n.priorityAction){
+  base.recommendations=[{title:'Prioridad principal',text:String(n.priorityAction),impact:'Prioridad 1'},...base.recommendations.filter(r=>r.title!=='Prioridad principal')].slice(0,5);
+ }
+ if(n.closing)base.closing={headline:'Conclusión de la lectura',text:String(n.closing)};
+ if(n.followUpObjective)base.followUp.objective=String(n.followUpObjective);
+ if(n.nextQuestion)base.followUp.questions=[String(n.nextQuestion),...(base.followUp.questions||[]).filter(q=>q!==n.nextQuestion)].slice(0,4);
+ return normalizeLocalInterpretation(base);
+}
 async function runLocalInterpretation(analysis){
- const engine=await getLocalAiEngine();
- const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,1800);
- const system='Asesor educativo de Tío Score, Perú. Usa solo los datos recibidos. No inventes ni cambies cifras. No prometas aprobación ni eliminación de registros. Devuelve SOLO JSON válido.';
- const user='Sé breve. Genera interpretación, plan y seguimiento personalizado. Estructura exacta: {"scoreDescription":"","summary":"","tags":[""],"alerts":[{"level":"red|yellow|green","title":"","text":""}],"recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],"closing":{"headline":"Conclusión de la lectura","text":""},"checklist":[""],"followUp":{"timeframe":"","objective":"","nextReview":"","verificationPoints":[""],"questions":[""]}}. Usa 2-4 alertas, 3-4 recomendaciones, 3-4 verificaciones y 2-3 preguntas para la próxima asesoría. DATOS: '+payload;
- const reply=await engine.chat.completions.create({
-  messages:[{role:'system',content:system},{role:'user',content:user}],
-  temperature:0.1,
-  max_tokens:520
- });
- const text=reply?.choices?.[0]?.message?.content||'';
- return normalizeLocalInterpretation(JSON.parse(cleanLocalJson(text)));
+ await getLocalAiEngine();
+ const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,1700);
+ const system='Eres asesor educativo de Tío Score en Perú. Usa únicamente los datos recibidos. No inventes cifras ni prometas aprobación o eliminación de registros. Responde SOLO JSON válido y breve.';
+ const user='Devuelve exactamente este JSON: {"scoreDescription":"","summary":"","priorityAction":"","closing":"","followUpObjective":"","nextQuestion":""}. Interpreta el score y prioriza deuda vencida, atrasos, protestos, capacidad de pago y evolución. DATOS: '+payload;
+ const messages=[{role:'system',content:system},{role:'user',content:user}];
+ let text='';
+ if(localAiBackend==='cpu'){
+  const out=await cpuQwenRequest('generate',{messages,maxNewTokens:230},300000);
+  text=String(out.text||'');
+ }else{
+  const reply=await localAiEngine.chat.completions.create({messages,temperature:0,max_tokens:230});
+  text=String(reply?.choices?.[0]?.message?.content||'');
+ }
+ const clean=cleanLocalJson(text);
+ if(!clean)throw new Error('Qwen respondió sin un JSON utilizable.');
+ let parsed;
+ try{parsed=JSON.parse(clean)}
+ catch{throw new Error('Qwen respondió, pero el JSON no fue válido.')}
+ return mergeQwenNarrative(analysis,parsed);
 }
 function generateLocalInterpretation(analysis){
  const job=()=>runLocalInterpretation(analysis);
@@ -992,7 +1093,7 @@ async function processPdf(file,{background=false}={}){
   generateLocalInterpretation(local).then(async interpretation=>{
    Object.assign(local,interpretation);
    local.confidence=parsed.parserConfidence;
-   local.sourceReport.interpretationEngine='IA local · '+(localAiModelId||'Qwen rápido');
+   local.sourceReport.interpretationEngine='IA local · '+(localAiModelId||'Qwen local');
    local.sourceReport.interpretationError='';
    local.sourceReport.parserMode=parsed.parserConfidence>=70
     ?'Parser local + '+(localAiModelId||'Qwen rápido')
@@ -1002,7 +1103,8 @@ async function processPdf(file,{background=false}={}){
     loadAnalysis(local,false,file.name,{skipReveal:true,skipHistory:true,keepHistoryId:true});
     $('#analysisMeta').textContent='Reporte leído 100% · IA completada · '+dateNow();
     setWorkspaceReadProgress(100);
-    setAiWorkStatus('done','IA lista',true);
+    setAiWorkStatus('done',localAiBackend==='cpu'?'IA lista · CPU':'IA lista · GPU',true);
+    setInlineAiMessage('Qwen completó la interpretación por '+(localAiBackend==='cpu'?'CPU/WASM':'WebGPU')+'.','ok');
    }
    await persistHistoryAnalysis(analysisHistoryId,local).catch(()=>{});
   }).catch(err=>{
@@ -1013,6 +1115,7 @@ async function processPdf(file,{background=false}={}){
     ?'Parser local · reglas rápidas'
     :'Parser/OCR parcial · reglas rápidas';
    setLocalAiStatus('Reglas activas · Qwen no disponible');
+   setInlineAiMessage(aiErr,'error');
    const self=$('#aiSelfTest');if(self)self.textContent='Falló · '+aiErr.slice(0,120);
    if(state.analysis===local){renderInterpretationEngine(local);setWorkspaceReadProgress(100);setAiWorkStatus('fallback','Reglas locales',true);$('#analysisMeta').textContent='Reporte leído 100% · IA local no disponible';}
    persistHistoryAnalysis(analysisHistoryId,local).catch(()=>{});
@@ -1229,11 +1332,11 @@ async function readPageWithOcr(image,page){
 function renderInterpretationEngine(x){
  const el=$('#interpretationEngineBadge');if(!el)return;
  const engine=x?.sourceReport?.interpretationEngine||'Reglas locales';
- const isAI=/IA local/i.test(engine);
- el.textContent=isAI?'IA local':'Reglas locales';
+ const isAI=/IA local/i.test(engine),prelim=/respuesta inmediata/i.test(engine);
+ el.textContent=isAI?'IA local':prelim?'Preliminar':'Reglas locales';
  el.className='engine-badge '+(isAI?'engine-ai':'engine-rules');
  const err=x?.sourceReport?.interpretationError||'';
- el.title=isAI?'Interpretación generada por Qwen local.':(err?'Qwen no completó la generación: '+err:'Interpretación generada con reglas locales.');
+ el.title=isAI?'Interpretación generada por Qwen local.':prelim?'Lectura preliminar mientras Qwen trabaja en segundo plano.':(err?'Qwen no completó la generación: '+err:'Interpretación generada con reglas locales.');
 }
 function loadQuickAnalysis(a,filename=''){
  state.analysis=normalize(a);const x=state.analysis;
@@ -1750,9 +1853,12 @@ $('#historySearch')?.addEventListener('input',e=>{state.historyFilter=e.target.v
 
 async function retryLocalAI(){
  setLocalAiStatus('Reiniciando Qwen…');
+ setInlineAiMessage('Reintentando Qwen local…','info');
  const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Reintentando…';testEl.className=''}
  try{if(localAiWorker)localAiWorker.terminate()}catch{}
- localAiWorker=null;localAiEngine=null;localAiPromise=null;localAiLastError='';
+ try{if(cpuQwenWorker)cpuQwenWorker.terminate()}catch{}
+ for(const [id,p] of cpuQwenPending){clearTimeout(p.timer);p.reject(new Error('Reinicio manual'));cpuQwenPending.delete(id)}
+ localAiWorker=null;cpuQwenWorker=null;localAiEngine=null;localAiPromise=null;localAiBackend='';localAiModelId='';localAiLastError='';localAiGpuError='';localAiHardware=null;
  try{await getLocalAiEngine()}catch{}
 }
 $('#retryLocalAi')?.addEventListener('click',retryLocalAI);
@@ -1760,10 +1866,12 @@ $('#retryLocalAi')?.addEventListener('click',retryLocalAI);
 async function checkAIStatus(){
  const hw=await inspectLocalHardware();
  renderHardwareStatus(hw);
- if(!hw.webgpu){setLocalAiStatus('Reglas activas · sin WebGPU');return}
- if(localAiEngine)setLocalAiStatus('Qwen verificado · '+localAiModelId,true);
- else if(localAiLastError)setLocalAiStatus('Reglas activas · Qwen falló');
- else setLocalAiStatus('Qwen rápido · precalentando…');
+ if(localAiEngine){
+  setLocalAiStatus('Qwen verificado · '+(localAiBackend==='cpu'?'CPU/WASM':'WebGPU'),true);
+  return;
+ }
+ if(localAiLastError){setLocalAiStatus('Qwen local no disponible');setInlineAiMessage(localAiLastError,'error');return}
+ setLocalAiStatus(hw.webgpu?'Qwen WebGPU · precalentando…':'Qwen CPU/WASM · precalentando…');
 }
 
 bootstrap();
