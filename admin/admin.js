@@ -402,6 +402,238 @@ async function postAnalysis(text,filename,extractionMeta,mode='full'){
  return d;
 }
 
+
+function reportCapture(text,patterns){
+ for(const re of patterns){
+  const m=text.match(re);
+  if(m&&m[1]!=null)return String(m[1]).trim();
+ }
+ return '';
+}
+function reportMoneyNumber(value){
+ const s=String(value||'').replace(/[^\d,.-]/g,'').trim();
+ if(!s)return null;
+ let normalized=s;
+ if(s.includes(',')&&s.includes('.'))normalized=s.lastIndexOf('.')>s.lastIndexOf(',')?s.replace(/,/g,''):s.replace(/\./g,'').replace(',','.');
+ else if(s.includes(','))normalized=s.replace(',','.');
+ const n=Number(normalized);
+ return Number.isFinite(n)?n:null;
+}
+function reportMoney(value){
+ const n=reportMoneyNumber(value);
+ return n==null?'':'S/ '+n.toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function protectedDocument(value){
+ const digits=String(value||'').replace(/\D/g,'');
+ return digits.length>=2?'••••••'+digits.slice(-2):'';
+}
+function parserRisk(score){
+ const s=Number(score)||0;
+ if(s>=877)return 'EXCELENTE';
+ if(s>=722)return 'BUENO';
+ if(s>=598)return 'REGULAR';
+ if(s>=477)return 'ALERTA';
+ if(s>=1)return 'ALERTA';
+ return 'POR REVISAR';
+}
+function detectInstitutions(text){
+ const defs=[
+  ['BCP',/\b(?:BCP|BANCO DE CR[EÉ]DITO DEL PER[UÚ])\b/i],
+  ['BBVA',/\bBBVA\b/i],['Interbank',/\bINTERBANK\b/i],['Scotiabank',/\bSCOTIABANK\b/i],
+  ['Mibanco',/\bMIBANCO\b/i],['BanBif',/\bBANBIF\b/i],['Banco Pichincha',/\b(?:BANCO )?PICHINCHA\b/i],
+  ['Banco de la Nación',/\bBANCO DE LA NACI[OÓ]N\b/i],['Caja Arequipa',/\bCAJA AREQUIPA\b/i],
+  ['Caja Huancayo',/\bCAJA HUANCAYO\b/i],['Caja Piura',/\bCAJA PIURA\b/i],['Caja Cusco',/\bCAJA CUSCO\b/i],
+  ['Claro',/\bCLARO\b/i],['Entel',/\bENTEL\b/i],['Movistar',/\bMOVISTAR\b/i]
+ ];
+ return defs.filter(([,re])=>re.test(text)).map(([name])=>name);
+}
+function buildRuleInterpretation(a){
+ const score=Number(a.score)||0;
+ const raw=a.raw||{};
+ const overdue=reportMoneyNumber(raw['Deuda vencida SBS / Microfinanzas'])||0;
+ const overdueDocs=reportMoneyNumber(raw['Monto de documentos vencidos'])||0;
+ const tax=reportMoneyNumber(raw['Deuda tributaria'])||0;
+ const labor=reportMoneyNumber(raw['Deuda laboral'])||0;
+ const days=Math.max(Number(raw['Días de vencimiento del documento'])||0,Number(raw['Días de atraso visibles en BCP'])||0);
+ const unreg=reportMoneyNumber(raw['Documentos protestados no regularizados'])||0;
+ const alerts=[],recs=[],tags=[];
+ if(score>0)tags.push(getScoreBand(score).category);
+ if(overdue>0||overdueDocs>0){
+  alerts.push({level:'red',title:'Obligaciones vencidas detectadas',text:'El reporte registra montos vencidos que requieren revisión y regularización.'});
+  recs.push({title:'Regularizar obligaciones vencidas',text:'Prioriza los saldos vencidos identificados y conserva constancias de pago o no adeudo.',impact:'Prioridad 1'});
+  tags.push('Deuda vencida');
+ }
+ if(days>0){
+  alerts.push({level:'red',title:'Atraso registrado',text:'Se observan '+days+' días de atraso en la información extraída.'});
+  if(!recs.some(r=>/vencid/i.test(r.title)))recs.push({title:'Corregir el atraso',text:'Regulariza la obligación atrasada y verifica posteriormente su actualización.',impact:'Prioridad 1'});
+ }
+ if(unreg>0){
+  alerts.push({level:'red',title:'Protestos no regularizados',text:'El reporte registra documentos protestados pendientes de regularización.'});
+  recs.push({title:'Revisar documentos protestados',text:'Regulariza los documentos protestados y solicita sustento de la actualización.',impact:'Prioridad 2'});
+ }
+ if(tax>0||labor>0){
+  alerts.push({level:'yellow',title:'Obligaciones adicionales',text:'Se detectan obligaciones tributarias o laborales que conviene revisar.'});
+  recs.push({title:'Revisar obligaciones adicionales',text:'Verifica el estado y exigibilidad de las obligaciones tributarias o laborales detectadas.',impact:'Prioridad 2'});
+ }
+ if(!alerts.length)alerts.push({level:'green',title:'Sin alertas críticas en los campos principales',text:'Los campos principales extraídos no muestran una alerta explícita; revisa igualmente el detalle completo del reporte.'});
+ if(!recs.length)recs.push({title:'Mantener pagos puntuales',text:'Conserva el cumplimiento de las obligaciones vigentes y evita atrasos.',impact:'Prioridad 1'});
+ recs.push({title:'Verificar la actualización del reporte',text:'Después de cualquier regularización, revisa un reporte posterior para confirmar que la información haya sido actualizada.',impact:recs.length===1?'Prioridad 2':'Seguimiento'});
+ const band=score?getScoreBand(score).category:'Puntaje por revisar';
+ return {
+  scoreDescription:score?'El score se encuentra en el rango "'+band+'". La lectura debe complementarse con las obligaciones y atrasos observados.':'No se identificó un score explícito con suficiente certeza.',
+  summary:(overdue>0||overdueDocs>0||days>0)
+   ?'La lectura presenta señales que requieren atención, principalmente obligaciones vencidas o atrasos identificados en el reporte.'
+   :'La lectura automática no detectó una señal crítica en los campos principales extraídos. Conviene validar el detalle antes de tomar decisiones.',
+  tags:[...new Set(tags)].slice(0,5),
+  alerts:alerts.slice(0,5),
+  recommendations:recs.slice(0,5),
+  closing:{headline:'Conclusión de la lectura',text:'Prioriza la regularización de cualquier observación pendiente y confirma los cambios en un reporte actualizado.'},
+  checklist:['Revisar obligaciones identificadas','Regularizar pendientes si corresponde','Conservar constancias','Verificar actualización en un nuevo reporte']
+ };
+}
+function parseSentinelReport(source,meta={}){
+ const text=String(source||'').replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
+ const raw={};
+ const add=(label,value)=>{if(value!==''&&value!=null&&!/^(?:no informado|no registrado)$/i.test(String(value).trim()))raw[label]=String(value).trim()};
+ const name=reportCapture(text,[
+  /(?:nombres?\s*(?:y\s*apellidos?)?|titular|cliente)\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ]+){0,4})/i
+ ]);
+ const dni=reportCapture(text,[/\bDNI\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{8})\b/i,/\b(\d{8})\b(?=.{0,25}\bDNI\b)/i]);
+ const ruc=reportCapture(text,[/\bRUC\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{11})\b/i]);
+ const scoreRaw=reportCapture(text,[
+  /(?:score\s*(?:experian)?|puntaje(?:\s+experian)?)\s*[:\-]?\s*(\d{1,3})\b/i,
+  /\bexperian\b.{0,35}\b(\d{3})\b/i
+ ]);
+ const score=Math.max(0,Math.min(999,Number(scoreRaw)||0));
+ const scoreLabel=reportCapture(text,[/(?:nivel\s+del\s+score|puntaje)\s*[:\-]?\s*(puntaje\s+(?:muy\s+)?(?:bajo|medio|bueno|excelente)|(?:muy\s+)?(?:bajo|medio|bueno|excelente))/i]);
+ const creation=reportCapture(text,[/(?:fecha(?: y hora)? de creaci[oó]n|creationDateTime)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)/i]);
+ const updated=reportCapture(text,[/(?:informaci[oó]n actualizada(?: al)?|informationUpdated)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i]);
+ const documentType=reportCapture(text,[/(?:tipo de documento|documentType)\s*[:\-]?\s*(DNI|CE|RUC|PASAPORTE)/i])||(dni?'DNI':ruc?'RUC':'');
+ const banc=reportCapture(text,[/bancarizad[oa]\s*[:\-]?\s*(S[IÍ]|NO)\b/i]);
+ const capacity=reportCapture(text,[/(?:capacidad(?: de)? pago(?: mensual)?|capacityOfMonthlyPayment)\s*[:\-]?\s*((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i]);
+ const quickDebt=reportCapture(text,[/(?:deuda vigente\s*(?:·|-)?\s*consulta r[aá]pida|currentDebtQuickQuery)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const currentDebt=reportCapture(text,[/(?:deuda vigente\s*(?:SBS\s*\/?\s*Microfinanzas)?|currentDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const overdueDebt=reportCapture(text,[/(?:deuda vencida\s*(?:SBS\s*\/?\s*Microfinanzas)?|overdueDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const overdueDocs=reportCapture(text,[/(?:monto(?: de)? documentos vencidos|overdueDocumentAmount)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const overdueDays=reportCapture(text,[/(?:d[ií]as de vencimiento(?: del documento)?|overdueDocumentDays)\s*[:\-]?\s*(\d{1,4})/i]);
+ const bcpDays=reportCapture(text,[/(?:d[ií]as de atraso visibles? en BCP|visibleBCPOverdueDays)\s*[:\-]?\s*(\d{1,4})/i]);
+ const protestedUnreg=reportCapture(text,[/(?:documentos protestados no regularizados|protestedDocumentsUnregularized)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const protestedReg=reportCapture(text,[/(?:documentos protestados regularizados|protestedDocumentsRegularized)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const taxDebt=reportCapture(text,[/(?:deuda tributaria|taxDebt)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const laborDebt=reportCapture(text,[/(?:deuda laboral|laborDebt)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
+ const exchangeRate=reportCapture(text,[/(?:tipo de cambio|exchangeRate)\s*[:\-]?\s*(\d+(?:[.,]\d+)?)/i]);
+ const activity=reportCapture(text,[/(?:actividad econ[oó]mica principal|mainEconomicActivity)\s*[:\-]?\s*([0-9]{3,6}\s*-\s*[^|]{3,90})/i]);
+ const taxpayerCondition=reportCapture(text,[/(?:condici[oó]n del contribuyente|taxpayerCondition)\s*[:\-]?\s*(HABIDO|NO HABIDO|PENDIENTE|NO HALLADO)/i]);
+ const taxpayerStatus=reportCapture(text,[/(?:estado del contribuyente|taxpayerStatus)\s*[:\-]?\s*(ACTIVO|BAJA[^|]{0,30}|SUSPENDIDO)/i]);
+ const taxpayerType=reportCapture(text,[/(?:tipo de contribuyente|taxpayerType)\s*[:\-]?\s*(PERSONA\s+(?:NATURAL|JUR[IÍ]DICA)[^|]{0,50})/i]);
+ const sunatUpdate=reportCapture(text,[/(?:[uú]ltima actualizaci[oó]n SUNAT|sunatLastUpdate)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i]);
+ const reportPages=reportCapture(text,[/(?:p[aá]ginas del reporte|reportPages)\s*[:\-]?\s*(\d{1,3})/i])||String(meta.totalPages||'');
+ const institutions=detectInstitutions(text);
+
+ add('Nombre',name?firstName(name):'');
+ add('Tipo de documento',documentType);
+ add('Documento',protectedDocument(dni||ruc));
+ add('Últimos dígitos del RUC',ruc?ruc.slice(-2):'');
+ add('Fecha y hora de creación',creation);
+ add('Información actualizada al',updated);
+ add('Score Experian',score||'');
+ add('Nivel del score',scoreLabel||(score?getScoreBand(score).category:''));
+ add('Bancarizado',banc.toUpperCase());
+ add('Capacidad de pago mensual',capacity);
+ add('Deuda vigente · Consulta rápida',quickDebt);
+ add('Deuda vigente SBS / Microfinanzas',currentDebt);
+ add('Deuda vencida SBS / Microfinanzas',overdueDebt);
+ add('Monto de documentos vencidos',overdueDocs);
+ add('Días de vencimiento del documento',overdueDays);
+ add('Días de atraso visibles en BCP',bcpDays);
+ add('Documentos protestados no regularizados',protestedUnreg);
+ add('Documentos protestados regularizados',protestedReg);
+ add('Tipo de cambio',exchangeRate);
+ add('Deuda tributaria',taxDebt);
+ add('Deuda laboral',laborDebt);
+ add('Actividad económica principal',activity);
+ add('Condición del contribuyente',taxpayerCondition);
+ add('Estado del contribuyente',taxpayerStatus);
+ add('Tipo de contribuyente',taxpayerType);
+ add('Última actualización SUNAT',sunatUpdate);
+ add('Páginas del reporte',reportPages);
+ if(institutions.length)add('Entidades detectadas',institutions.join(' · '));
+
+ let points=0;
+ if(/\bsentinel\b/i.test(text))points+=10;
+ if(score)points+=25;
+ if(dni||ruc)points+=10;
+ if(name)points+=7;
+ if(creation||updated)points+=5;
+ if(currentDebt||quickDebt)points+=10;
+ if(overdueDebt||overdueDocs)points+=10;
+ if(capacity)points+=8;
+ if(banc)points+=4;
+ if(taxDebt||laborDebt)points+=4;
+ if(taxpayerCondition||taxpayerStatus||taxpayerType)points+=4;
+ if(reportPages)points+=3;
+ const parserConfidence=Math.min(100,points);
+
+ const current=reportMoneyNumber(currentDebt||quickDebt);
+ const overdue=reportMoneyNumber(overdueDebt);
+ const docs=reportMoneyNumber(overdueDocs);
+ const debtComposition=[];
+ if(current!=null&&current>0)debtComposition.push({label:'Deuda vigente',value:current});
+ if(overdue!=null&&overdue>0)debtComposition.push({label:'Deuda vencida SBS / Microfinanzas',value:overdue});
+ if(docs!=null&&docs>0)debtComposition.push({label:'Documentos vencidos',value:docs});
+
+ const entities=institutions.map(v=>({name:v,type:'Entidad detectada',product:'',balance:'No informado',status:'No informado',daysPastDue:'',classification:'',limit:'',monthlyPayment:''}));
+ const obligations=[];
+ if(current!=null)obligations.push({entity:'Sistema financiero',product:'Deuda vigente',balance:reportMoney(current),status:'Vigente',detail:'Monto global identificado en el reporte'});
+ if(overdue!=null&&overdue>0)obligations.push({entity:'Sistema financiero',product:'Deuda vencida',balance:reportMoney(overdue),status:'Vencida',detail:(overdueDays||bcpDays)?'Atraso detectado: '+Math.max(Number(overdueDays)||0,Number(bcpDays)||0)+' días':'Monto vencido identificado'});
+ if(docs!=null&&docs>0)obligations.push({entity:'Documentos',product:'Documentos vencidos',balance:reportMoney(docs),status:'Vencida',detail:'Documentos impagos identificados'});
+
+ const financialLabels=new Set(['Score Experian','Nivel del score','Bancarizado','Capacidad de pago mensual','Deuda vigente · Consulta rápida','Deuda vigente SBS / Microfinanzas','Deuda vencida SBS / Microfinanzas','Monto de documentos vencidos','Días de vencimiento del documento','Días de atraso visibles en BCP','Documentos protestados no regularizados','Documentos protestados regularizados']);
+ const taxLabels=new Set(['Deuda tributaria','Deuda laboral','Actividad económica principal','Condición del contribuyente','Estado del contribuyente','Tipo de contribuyente','Última actualización SUNAT']);
+ const toItems=set=>Object.entries(raw).filter(([k])=>set.has(k)).map(([label,value])=>({label,value}));
+ const reportSections=[];
+ const financialItems=toItems(financialLabels);if(financialItems.length)reportSections.push({title:'Situación financiera',items:financialItems});
+ const taxItems=toItems(taxLabels);if(taxItems.length)reportSections.push({title:'Información tributaria y comercial',items:taxItems});
+
+ const metrics=[];
+ if(score)metrics.push({value:String(score),label:'Score Experian'});
+ if(current!=null)metrics.push({value:reportMoney(current),label:'Deuda vigente'});
+ if(overdue!=null)metrics.push({value:reportMoney(overdue),label:'Deuda vencida',danger:overdue>0});
+ if(docs!=null)metrics.push({value:reportMoney(docs),label:'Documentos vencidos',danger:docs>0});
+ if(overdueDays||bcpDays)metrics.push({value:String(Math.max(Number(overdueDays)||0,Number(bcpDays)||0)),label:'Máx. días de atraso',danger:true});
+ if(capacity)metrics.push({value:capacity,label:'Capacidad de pago'});
+
+ const analysis={
+  sourceReport:{provider:/\bsentinel\b/i.test(text)?'Sentinel':'Reporte detectado',type:'Reporte crediticio',reportDate:updated||creation||'',periodCovered:'',sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local'},
+  client:{name:firstName(name||'Cliente'),document:protectedDocument(dni||ruc)||'Documento protegido',age:'',reportDate:updated||creation||'',entities:institutions.join(' · ')},
+  score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,
+  metrics,debtSeries:[],debtComposition,monthlyBehavior:[],entities,obligations,inquiries:[],raw,reportSections,
+  reportCharts:{noteEvolution:[],classificationHistory:[],overdueByType:[],overdueShare:[],currentVsOverdue:[],institutionShare:debtComposition}
+ };
+ Object.assign(analysis,buildRuleInterpretation(analysis));
+ return {analysis,parserConfidence};
+}
+function interpretationPayload(a){
+ return {
+  score:a.score,
+  scoreLevel:getScoreBand(a.score).category,
+  confidence:a.confidence,
+  datos:a.raw,
+  entidades:(a.entities||[]).map(x=>x.name).slice(0,15)
+ };
+}
+async function postInterpretation(analysis){
+ const r=await fetch('/api/analyze',{
+  method:'POST',
+  headers:{'content-type':'application/json'},
+  credentials:'include',
+  body:JSON.stringify({mode:'interpret',structured:interpretationPayload(analysis)})
+ });
+ const d=await r.json().catch(()=>({}));
+ if(!r.ok)throw new Error(d.message||d.error||'No se pudo generar la interpretación');
+ return d.interpretation||{};
+}
+
 async function processPdf(file,{background=false}={}){
  state.processUi=background?'drawer':'initial';
  if(background){
@@ -409,67 +641,73 @@ async function processPdf(file,{background=false}={}){
  }else{
   $('#uploadState').classList.remove('hidden');
   updateProcessTitle('Leyendo '+file.name);
-  updateProcessDetail('Buscando texto y preparando lectura rápida…');
+  updateProcessDetail('Extrayendo datos del reporte sin IA…');
  }
 
- let quickStarted=false,quickShown=false,fullLoaded=false;
- const startQuick=(partialText)=>{
-  if(quickStarted||String(partialText||'').length<100)return;
-  quickStarted=true;
-  postAnalysis(partialText,file.name,{mode:'partial'},'quick')
-   .then(d=>{
-    if(fullLoaded||!d?.analysis)return;
-    quickShown=true;
-    loadQuickAnalysis(d.analysis,file.name);
-   })
-   .catch(()=>{});
- };
-
+ let localShown=false;
  try{
-  const extracted=await extractPdfHybrid(file,{onQuickText:startQuick});
+  const extracted=await extractPdfHybrid(file);
   if(extracted.text.length<100)throw new Error('No se logró obtener suficiente contenido legible del reporte.');
 
-  if(!quickStarted)startQuick(extracted.text);
-
-  const mode=extracted.visualPages>0
-   ? 'Lectura híbrida lista: '+extracted.digitalPages+' digitales y '+extracted.visualPages+' visuales.'
-   : 'Lectura digital lista.';
-  updateProcessTitle('Completando análisis');
-  updateProcessDetail(mode+' Generando tablas, alertas, recomendaciones y gráficos…');
-
-  const d=await postAnalysis(extracted.text,file.name,{
+  const parsed=parseSentinelReport(extracted.text,{
    totalPages:extracted.totalPages,
    digitalPages:extracted.digitalPages,
-   visualPages:extracted.visualPages,
-   mode:extracted.visualPages>0?'hybrid':'digital'
-  },'full');
+   visualPages:extracted.visualPages
+  });
+  const local=parsed.analysis;
+  local.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + visión)':'Texto digital';
+  local.sourceReport.totalPages=extracted.totalPages;
+  local.sourceReport.visualPages=extracted.visualPages;
 
-  fullLoaded=true;
-  if(!d.analysis.sourceReport)d.analysis.sourceReport={};
-  d.analysis.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + visión)':'Texto digital';
-  d.analysis.sourceReport.totalPages=extracted.totalPages;
-  d.analysis.sourceReport.visualPages=extracted.visualPages;
+  if(parsed.parserConfidence>=70){
+   localShown=true;
+   loadQuickAnalysis(local,file.name);
+   $('#analysisMeta').textContent='Parser local · preparando interpretación…';
+   updateProcessTitle('Datos extraídos');
+   updateProcessDetail('Parser local '+parsed.parserConfidence+'% · IA solo para Interpretación y plan…');
 
-  if(background){
-   updateProcessTitle('Análisis completo');
-   updateProcessDetail('La ficha ya está completamente actualizada.');
+   try{
+    const interpretation=await postInterpretation(local);
+    Object.assign(local,interpretation);
+    local.confidence=parsed.parserConfidence;
+    local.sourceReport.parserMode='Parser local + IA de interpretación';
+   }catch{
+    local.sourceReport.parserMode='Parser local · interpretación por reglas';
+   }
+
+   if(background){
+    updateProcessTitle('Análisis listo');
+    updateProcessDetail('Datos procesados localmente; la IA solo redactó la interpretación.');
+   }
+   loadAnalysis(local,false,file.name,{skipReveal:true});
+  }else{
+   updateProcessTitle('Formato requiere apoyo de IA');
+   updateProcessDetail('Confianza del parser '+parsed.parserConfidence+'% · usando análisis completo como respaldo…');
+   const d=await postAnalysis(extracted.text,file.name,{
+    totalPages:extracted.totalPages,
+    digitalPages:extracted.digitalPages,
+    visualPages:extracted.visualPages,
+    mode:extracted.visualPages>0?'hybrid':'digital'
+   },'full');
+   if(!d.analysis.sourceReport)d.analysis.sourceReport={};
+   d.analysis.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + visión)':'Texto digital';
+   d.analysis.sourceReport.totalPages=extracted.totalPages;
+   d.analysis.sourceReport.visualPages=extracted.visualPages;
+   d.analysis.sourceReport.parserMode='IA completa de respaldo';
+   loadAnalysis(d.analysis,false,file.name);
   }
-  loadAnalysis(d.analysis,false,file.name,{skipReveal:quickShown});
+
   if(background){
    state.drawerProcessing=false;
    setTimeout(()=>closeNewAnalysisDrawer(true),250);
   }
  }catch(err){
-  fullLoaded=true;
-  if(quickShown){
-   $('#analysisMeta').textContent='Vista rápida · no se pudo completar el análisis';
-  }
   if(background){
-   if(quickShown){
+   if(localShown){
     state.drawerProcessing=false;
     closeNewAnalysisDrawer(true);
    }else showDrawerError(err.message);
-  }else if(!quickShown){
+  }else{
    updateProcessTitle('No se pudo completar la lectura');
    updateProcessDetail(err.message);
   }
