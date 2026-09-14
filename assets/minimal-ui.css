@@ -209,7 +209,6 @@ body{background:#fff;color:var(--text);letter-spacing:0}
   #inicio h1{font-size:clamp(32px,9.5vw,40px)}
 }
 
-/* Corrige la navegación lateral para que la regla global de nav no la convierta en un bloque blanco. */
 @media(min-width:1100px){
   .ts-sidebar nav.ts-side-nav{
     background:transparent!important;
@@ -224,7 +223,6 @@ body{background:#fff;color:var(--text);letter-spacing:0}
   .ts-wa-trigger{border-radius:10px!important}
 }
 
-/* Ajustes de presentación solicitados: hero con mayor presencia y WhatsApp sin recortes. */
 @media(min-width:768px){
   .ts-wa-trigger{
     min-width:268px;
@@ -268,7 +266,6 @@ body{background:#fff;color:var(--text);letter-spacing:0}
   .hero-visual-caption span{font-size:12.5px}
 }
 
-/* Desktop con sidebar: mantiene la ampliación sin forzar columnas estrechas. */
 @media(min-width:1100px) and (max-width:1350px){
   #inicio .hero-shell{gap:30px}
   #inicio h1{font-size:clamp(46px,4.6vw,60px)}
@@ -277,7 +274,6 @@ body{background:#fff;color:var(--text);letter-spacing:0}
   .hero-visual img{max-width:220px}
 }
 
-/* Mobile: solo el logo de WhatsApp, sin tarjeta/contenedor exterior. */
 @media(max-width:767px){
   .ts-wa-trigger{
     width:52px!important;
@@ -321,4 +317,3 @@ body{background:#fff;color:var(--text);letter-spacing:0}
   .hero-visual img{max-width:146px}
   #inicio h1{font-size:clamp(36px,10.2vw,44px)}
 }
-
