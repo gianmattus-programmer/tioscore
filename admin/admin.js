@@ -90,7 +90,7 @@ async function bootstrap(){
  }catch{show('#configGate')}
 }
 function show(sel){['#configGate','#loginGate','#app'].forEach(x=>$(x)?.classList.add('hidden'));$(sel)?.classList.remove('hidden')}
-function showApp(){show('#app');renderHistory();checkAIStatus()}
+function showApp(){show('#app');renderHistory();checkAIStatus();setTimeout(()=>warmLocalAI(),900)}
 function esc(v=''){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function dateNow(){return new Intl.DateTimeFormat('es-PE',{dateStyle:'medium',timeStyle:'short'}).format(new Date())}
 function money(n){const v=Number(n);return Number.isFinite(v)?'S/ '+v.toLocaleString('es-PE',{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2}):String(n??'—')}
@@ -348,7 +348,7 @@ function showDrawerProcessing(file){
 function friendlyAnalysisError(message=''){
  const s=String(message||'');
  if(/rate limit|tokens per min|tpm|openai|organization org-|platform\.openai\.com/i.test(s))
-  return 'La interpretación con IA está temporalmente ocupada. Los datos del reporte pueden seguir procesándose localmente.';
+  return 'La IA local no pudo completar esta interpretación. Se usará el plan basado en reglas.';
  if(/ocr/i.test(s))return 'No se pudo leer una de las páginas escaneadas. Intenta con un PDF más nítido.';
  return s||'No se pudo completar la lectura del documento.';
 }
@@ -495,7 +495,14 @@ function buildRuleInterpretation(a){
   alerts:alerts.slice(0,5),
   recommendations:recs.slice(0,5),
   closing:{headline:'Conclusión de la lectura',text:'Prioriza la regularización de cualquier observación pendiente y confirma los cambios en un reporte actualizado.'},
-  checklist:['Revisar obligaciones identificadas','Regularizar pendientes si corresponde','Conservar constancias','Verificar actualización en un nuevo reporte']
+  checklist:['Revisar obligaciones identificadas','Regularizar pendientes si corresponde','Conservar constancias','Verificar actualización en un nuevo reporte'],
+  followUp:{
+   timeframe:(overdue>0||overdueDocs>0||days>0)?'7–30 días':'30–60 días',
+   objective:(overdue>0||overdueDocs>0||days>0)?'Confirmar regularización de atrasos y cambios en el reporte.':'Confirmar que el perfil se mantenga estable y sin nuevas observaciones.',
+   nextReview:'Comparar un reporte actualizado con esta lectura y registrar cambios en score, saldos, atrasos y estados.',
+   verificationPoints:['Estado de obligaciones pendientes','Actualización de saldos y días de atraso','Cambios en score o clasificación','Nuevas consultas u obligaciones'],
+   questions:['¿Qué obligaciones se regularizaron desde esta lectura?','¿Existe alguna nueva deuda o solicitud de crédito?','¿Qué cambios aparecen en el reporte actualizado?']
+  }
  };
 }
 function parseSentinelReport(source,meta={}){
@@ -626,19 +633,101 @@ function interpretationPayload(a){
   scoreLevel:getScoreBand(a.score).category,
   confidence:a.confidence,
   datos:a.raw,
-  entidades:(a.entities||[]).map(x=>x.name).slice(0,15)
+  metricas:(a.metrics||[]).slice(0,12),
+  entidades:(a.entities||[]).slice(0,15).map(x=>({nombre:x.name,producto:x.product,saldo:x.balance,estado:x.status||x.classification})),
+  obligaciones:(a.obligations||[]).slice(0,20).map(x=>({entidad:x.entity,producto:x.product,saldo:x.balance,estado:x.status,detalle:x.detail}))
  };
 }
-async function postInterpretation(analysis){
- const r=await fetch('/api/analyze',{
-  method:'POST',
-  headers:{'content-type':'application/json'},
-  credentials:'include',
-  body:JSON.stringify({mode:'interpret',structured:interpretationPayload(analysis)})
+
+let localAiEngine=null;
+let localAiPromise=null;
+let localAiModelId='';
+const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.85';
+
+function setLocalAiStatus(textValue,ok=false){
+ const el=$('#aiStatus');
+ if(!el)return;
+ el.textContent=textValue;
+ el.className=ok?'ok':'';
+}
+function localAiProgressText(p){
+ const raw=String(p?.text||p?.status||'Cargando IA local…');
+ const pct=Number(p?.progress);
+ return Number.isFinite(pct)?raw+' '+Math.round(pct*100)+'%':raw;
+}
+function chooseLocalModel(webllm){
+ const ids=(webllm.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id).filter(Boolean);
+ const prefs=[
+  /Qwen3[-_.]?1\.7B.*(?:Instruct|MLC)/i,
+  /Qwen2\.5[-_.]?1\.5B.*Instruct/i,
+  /Llama[-_.]?3\.2[-_.]?1B.*Instruct/i,
+  /SmolLM2[-_.]?1\.7B.*Instruct/i,
+  /gemma[-_.]?2[-_.]?2b.*(?:it|instruct)/i,
+  /Phi[-_.]?3\.5.*mini.*instruct/i
+ ];
+ for(const re of prefs){const id=ids.find(x=>re.test(x));if(id)return id}
+ const small=ids.find(x=>/(?:0\.5B|0\.6B|1B|1\.5B|1\.7B|2B|3B|mini)/i.test(x)&&/(?:instruct|chat|it)/i.test(x));
+ if(small)return small;
+ throw new Error('No se encontró un modelo local liviano compatible.');
+}
+async function getLocalAiEngine(){
+ if(localAiEngine)return localAiEngine;
+ if(localAiPromise)return localAiPromise;
+ if(!('gpu' in navigator))throw new Error('Este navegador no tiene WebGPU. Se usará el plan por reglas.');
+ localAiPromise=(async()=>{
+  setLocalAiStatus('Cargando IA local…');
+  const webllm=await import(LOCAL_AI_MODULE);
+  localAiModelId=chooseLocalModel(webllm);
+  const appConfig={...webllm.prebuiltAppConfig,cacheBackend:'indexeddb'};
+  const engine=await webllm.CreateMLCEngine(localAiModelId,{
+   appConfig,
+   initProgressCallback:p=>{
+    const msg=localAiProgressText(p);
+    setLocalAiStatus(msg);
+    if(state.processUi==='drawer'&&state.drawerProcessing)updateProcessDetail(msg+' · descarga solo la primera vez.');
+   }
+  });
+  localAiEngine=engine;
+  setLocalAiStatus('Lista · '+localAiModelId,true);
+  return engine;
+ })();
+ try{return await localAiPromise}
+ finally{localAiPromise=null}
+}
+async function warmLocalAI(){
+ if(!('gpu' in navigator)){setLocalAiStatus('WebGPU no disponible · usando reglas');return}
+ try{await getLocalAiEngine()}catch(e){setLocalAiStatus('Reglas activas · IA local no disponible')}
+}
+function cleanLocalJson(s=''){
+ const text=String(s||'').trim().replace(/^\`\`\`json\s*/i,'').replace(/\`\`\`$/,'').trim();
+ const first=text.indexOf('{'),last=text.lastIndexOf('}');
+ return first>=0&&last>first?text.slice(first,last+1):text;
+}
+function normalizeLocalInterpretation(x){
+ const v=x&&typeof x==='object'?x:{};
+ v.tags=Array.isArray(v.tags)?v.tags:[];
+ v.alerts=Array.isArray(v.alerts)?v.alerts:[];
+ v.recommendations=Array.isArray(v.recommendations)?v.recommendations:[];
+ v.checklist=Array.isArray(v.checklist)?v.checklist:[];
+ v.closing=v.closing&&typeof v.closing==='object'?v.closing:{headline:'Conclusión de la lectura',text:''};
+ v.followUp=v.followUp&&typeof v.followUp==='object'?v.followUp:{};
+ v.followUp.verificationPoints=Array.isArray(v.followUp.verificationPoints)?v.followUp.verificationPoints:[];
+ v.followUp.questions=Array.isArray(v.followUp.questions)?v.followUp.questions:[];
+ return v;
+}
+async function generateLocalInterpretation(analysis){
+ const engine=await getLocalAiEngine();
+ const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,14000);
+ const system='Eres el asesor educativo de Tío Score en Perú. Trabajas solo con datos ya extraídos de un reporte crediticio. No inventes cifras, no prometas aprobación de créditos, eliminación de registros ni aumento del score. Prioriza hechos verificables, deuda vencida, atrasos, protestos, capacidad de pago, obligaciones tributarias/laborales y evolución. El seguimiento debe servir para una próxima asesoría personalizada. Responde SOLO JSON válido.';
+ const user='Genera interpretación, plan y seguimiento personalizado a partir de estos datos. Estructura exacta: {"scoreDescription":"","summary":"","tags":[""],"alerts":[{"level":"red|yellow|green","title":"","text":""}],"recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],"closing":{"headline":"Conclusión de la lectura","text":""},"checklist":[""],"followUp":{"timeframe":"","objective":"","nextReview":"","verificationPoints":[""],"questions":[""]}}. Usa 2-5 alertas, 3-5 recomendaciones, 3-6 verificaciones y 2-5 preguntas para la próxima asesoría. DATOS: '+payload;
+ const reply=await engine.chat.completions.create({
+  messages:[{role:'system',content:system},{role:'user',content:user}],
+  temperature:0.2,
+  max_tokens:1400,
+  response_format:{type:'json_object'}
  });
- const d=await r.json().catch(()=>({}));
- if(!r.ok)throw new Error(d.message||d.error||'No se pudo generar la interpretación');
- return d.interpretation||{};
+ const text=reply?.choices?.[0]?.message?.content||'';
+ return normalizeLocalInterpretation(JSON.parse(cleanLocalJson(text)));
 }
 
 async function processPdf(file,{background=false}={}){
@@ -672,25 +761,25 @@ async function processPdf(file,{background=false}={}){
   const confidenceLabel=parsed.parserConfidence>=70?'Parser local':'Lectura local parcial';
   $('#analysisMeta').textContent=confidenceLabel+' · preparando interpretación…';
   updateProcessTitle('Datos extraídos');
-  updateProcessDetail(confidenceLabel+' '+parsed.parserConfidence+'% · IA solo para Interpretación y plan…');
+  updateProcessDetail(confidenceLabel+' '+parsed.parserConfidence+'% · IA local para Interpretación, plan y seguimiento…');
 
   try{
-   const interpretation=await postInterpretation(local);
+   const interpretation=await generateLocalInterpretation(local);
    Object.assign(local,interpretation);
    local.confidence=parsed.parserConfidence;
    local.sourceReport.parserMode=parsed.parserConfidence>=70
     ?'Parser local + IA de interpretación'
-    :'Parser/OCR local parcial + IA de interpretación';
+    :'Parser/OCR local parcial + IA local';
   }catch{
    local.sourceReport.parserMode=parsed.parserConfidence>=70
     ?'Parser local · interpretación por reglas'
-    :'Parser/OCR local parcial · interpretación por reglas';
+    :'Parser/OCR local parcial · reglas de respaldo';
   }
 
   if(background){
    updateProcessTitle('Análisis listo');
    updateProcessDetail(parsed.parserConfidence>=70
-    ?'Datos procesados localmente; la IA solo redactó la interpretación.'
+    ?'Datos procesados localmente; IA local generó interpretación, plan y seguimiento.'
     :'Lectura parcial procesada sin enviar el PDF completo a IA.');
   }
   loadAnalysis(local,false,file.name,{skipReveal:true});
@@ -921,6 +1010,7 @@ function loadQuickAnalysis(a,filename=''){
  $('#closingText').textContent='La información detallada aparecerá automáticamente al terminar.';
  $('#checklist').innerHTML='';
  $('#checkProgress').textContent='0 / 0';
+ renderFollowUp({timeframe:'Preparando…',objective:'Generando seguimiento personalizado…',nextReview:'',verificationPoints:[],questions:[]});
  renderData(x.raw);
  $('#entitiesTable').innerHTML='<div class="empty-line" style="padding:10px">Completando entidades…</div>';
  $('#obligationsTable').innerHTML='<div class="empty-line" style="padding:10px">Completando obligaciones…</div>';
@@ -950,7 +1040,7 @@ function loadAnalysis(a,isDemo=false,filename='',options={}){
  $('#summaryTags').innerHTML=x.tags.map(t=>'<span>'+esc(t)+'</span>').join('');
  $('#alertsGrid').innerHTML=x.alerts.map(v=>'<div class="alert '+esc(v.level)+'"><div class="alert-top"><i class="alert-dot"></i><b>'+esc(v.title)+'</b></div><p>'+esc(v.text)+'</p></div>').join('')||'<div class="empty-line">Sin alertas identificadas.</div>';
  renderRecommendations(x.recommendations);$('#closingHeadline').textContent=x.closing.headline||'Conclusión';$('#closingText').textContent=x.closing.text||'Sin cierre disponible.';
- renderChecklist(x.checklist);renderData(x.raw);renderEntities(x.entities);renderObligations(x.obligations);renderInquiries(x.inquiries);renderSections(x.reportSections);
+ renderChecklist(x.checklist);renderFollowUp(x.followUp);renderData(x.raw);renderEntities(x.entities);renderObligations(x.obligations);renderInquiries(x.inquiries);renderSections(x.reportSections);
  renderMetrics(x.metrics);renderReportCharts(x);renderCoverage(x);
  $('#advisorNotes').value=x.notes||'';
  if(!isDemo)saveToHistory(filename);
@@ -1052,13 +1142,20 @@ function normalize(a){
  x.metrics=Array.isArray(x.metrics)?x.metrics:[];x.debtSeries=Array.isArray(x.debtSeries)?x.debtSeries:[];x.debtComposition=Array.isArray(x.debtComposition)?x.debtComposition:[];
  x.monthlyBehavior=Array.isArray(x.monthlyBehavior)?x.monthlyBehavior:[];x.entities=Array.isArray(x.entities)?x.entities:[];x.obligations=Array.isArray(x.obligations)?x.obligations:[];
  x.inquiries=Array.isArray(x.inquiries)?x.inquiries:[];x.recommendations=Array.isArray(x.recommendations)?x.recommendations:[];x.checklist=Array.isArray(x.checklist)?x.checklist:[];
- x.raw=x.raw&&typeof x.raw==='object'?x.raw:{};x.reportSections=Array.isArray(x.reportSections)?x.reportSections:[];x.closing=x.closing||{};
+ x.raw=x.raw&&typeof x.raw==='object'?x.raw:{};x.reportSections=Array.isArray(x.reportSections)?x.reportSections:[];x.closing=x.closing||{};x.followUp=x.followUp&&typeof x.followUp==='object'?x.followUp:{};x.followUp.verificationPoints=Array.isArray(x.followUp.verificationPoints)?x.followUp.verificationPoints:[];x.followUp.questions=Array.isArray(x.followUp.questions)?x.followUp.questions:[];
  x.reportCharts=x.reportCharts&&typeof x.reportCharts==='object'?x.reportCharts:{};
  for(const k of ['noteEvolution','classificationHistory','overdueByType','overdueShare','currentVsOverdue','institutionShare'])if(!Array.isArray(x.reportCharts[k]))x.reportCharts[k]=[];
  return x
 }
 function renderRecommendations(items){$('#recommendations').innerHTML=items.map((r,i)=>'<div class="rec"><div class="rec-num">'+(i+1)+'</div><div><h4>'+esc(r.title)+'</h4><p>'+esc(r.text)+'</p><span class="impact">'+esc(r.impact||'')+'</span></div></div>').join('')||'<div class="empty-line">Sin recomendaciones suficientes.</div>'}
-function renderChecklist(items){$('#checklist').innerHTML=items.map((t,i)=>'<label class="check"><input type="checkbox" data-i="'+i+'"><span>'+esc(t)+'</span></label>').join('');$$('#checklist input').forEach(v=>v.addEventListener('change',()=>{v.closest('.check').classList.toggle('done',v.checked);updateCheck()}));updateCheck()}
+function renderChecklist(items){$('#checklist').innerHTML=items.map((t,i)=>'<label class="check"><input type="checkbox" data-i="'+i+'"><span>'+esc(t)+'</span></label>').join('');$('#checklist input').forEach(v=>v.addEventListener('change',()=>{v.closest('.check').classList.toggle('done',v.checked);updateCheck()}));updateCheck()}
+function renderFollowUp(f={}){
+ const timing=$('#followUpTiming');if(timing)timing.textContent=f.timeframe||'Por definir';
+ const objective=$('#followUpObjective');if(objective)objective.textContent=f.objective||'Definir objetivos para la siguiente revisión.';
+ const next=$('#followUpReview');if(next)next.textContent=f.nextReview||'Comparar un reporte actualizado con la lectura actual.';
+ const points=$('#followUpPoints');if(points)points.innerHTML=(f.verificationPoints||[]).map(x=>'<li>'+esc(x)+'</li>').join('')||'<li>Revisar cambios relevantes del reporte.</li>';
+ const questions=$('#followUpQuestions');if(questions)questions.innerHTML=(f.questions||[]).map(x=>'<li>'+esc(x)+'</li>').join('')||'<li>¿Qué cambió desde la última asesoría?</li>';
+}
 function updateCheck(){const all=$$('#checklist input'),done=all.filter(x=>x.checked).length;$('#checkProgress').textContent=done+' / '+all.length}
 function renderData(data){
  const rows=Object.entries(data).filter(([k])=>!isSurnameLabel(k)).map(([k,v])=>{
@@ -1196,6 +1293,13 @@ $('#saveNotesBtn')?.addEventListener('click',saveNotes);let noteTimer;$('#adviso
 function saveNotes(){if(state.analysis)state.analysis.notes=$('#advisorNotes').value;$('#notesStatus').textContent='Guardado local'}
 function saveToHistory(filename){const item={id:crypto.randomUUID(),name:state.analysis.client?.name||filename||'Cliente',score:state.analysis.score,risk:state.analysis.risk,date:new Date().toISOString(),summary:state.analysis.summary,analysis:state.analysis};state.history.unshift(item);state.history=state.history.slice(0,30);localStorage.setItem('ts-admin-history',JSON.stringify(state.history));renderHistory()}
 function renderHistory(){const box=$('#historyList');if(!box)return;if(!state.history.length){box.innerHTML='<div class="empty-line">Aún no hay reportes guardados.</div>';return}box.innerHTML=state.history.map(x=>'<div class="history-item"><div><b>'+esc(x.name)+'</b><small>'+new Date(x.date).toLocaleString('es-PE')+'</small></div><div><small>Score</small><span class="score-mini">'+esc(x.score)+'</span></div><div><small>Estado</small><b>'+esc(x.risk)+'</b></div><div><small>'+esc((x.summary||'').slice(0,90))+'…</small></div><button class="mini-btn open-history" data-id="'+x.id+'">Abrir</button></div>').join('');$$('.open-history').forEach(b=>b.addEventListener('click',()=>{const x=state.history.find(h=>h.id===b.dataset.id);if(x){switchView('analysis');loadAnalysis(structuredClone(x.analysis),true)}}))}
-async function checkAIStatus(){try{const r=await fetch('/api/analyze',{method:'GET',credentials:'include'}),d=await r.json();$('#aiStatus').textContent=d.configured?'Conectada':'Falta OPENAI_API_KEY';$('#aiStatus').className=d.configured?'ok':''}catch{$('#aiStatus').textContent='No disponible'}}
+function checkAIStatus(){
+ if(!('gpu' in navigator)){
+  setLocalAiStatus('WebGPU no disponible · reglas activas');
+  return;
+ }
+ if(localAiEngine)setLocalAiStatus('Lista · '+localAiModelId,true);
+ else setLocalAiStatus('IA local · se carga y cachea en este equipo');
+}
 
 bootstrap();
