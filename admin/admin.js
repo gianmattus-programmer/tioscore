@@ -655,7 +655,7 @@ async function processPdf(file,{background=false}={}){
    visualPages:extracted.visualPages
   });
   const local=parsed.analysis;
-  local.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + visión)':'Texto digital';
+  local.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + OCR local)':'Texto digital';
   local.sourceReport.totalPages=extracted.totalPages;
   local.sourceReport.visualPages=extracted.visualPages;
 
@@ -690,7 +690,7 @@ async function processPdf(file,{background=false}={}){
     mode:extracted.visualPages>0?'hybrid':'digital'
    },'full');
    if(!d.analysis.sourceReport)d.analysis.sourceReport={};
-   d.analysis.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + visión)':'Texto digital';
+   d.analysis.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + OCR local)':'Texto digital';
    d.analysis.sourceReport.totalPages=extracted.totalPages;
    d.analysis.sourceReport.visualPages=extracted.visualPages;
    d.analysis.sourceReport.parserMode='IA completa de respaldo';
@@ -771,13 +771,14 @@ async function extractPdfHybrid(file,{onQuickText}={}){
 
  if(visualJobs.length){
   let done=0;
-  updateProcessDetail('Lectura visual: procesando hasta 3 páginas en paralelo…');
-  await parallelMapLimit(visualJobs,3,async job=>{
+  updateProcessDetail('OCR local: preparando lectura de '+visualPages+' página'+(visualPages===1?'':'s')+' sin tokens…');
+  await getOcrScheduler();
+  await parallelMapLimit(visualJobs,2,async job=>{
    const image=await renderPageForVision(job.page);
-   const visualText=await readPageVisually(image,job.pageNumber,file.name);
-   pages[job.index]='--- PÁGINA '+job.pageNumber+' · LECTURA VISUAL ---\n'+visualText;
+   const visualText=await readPageWithOcr(image,job.pageNumber);
+   pages[job.index]='--- PÁGINA '+job.pageNumber+' · OCR LOCAL ---\n'+visualText;
    done++;
-   updateProcessDetail('Lectura visual '+done+' de '+visualPages+' · hasta 3 páginas en paralelo…');
+   updateProcessDetail('OCR local '+done+' de '+visualPages+' · procesamiento en este navegador…');
    maybeStartQuick();
   });
  }
@@ -800,7 +801,7 @@ function isDigitalTextUseful(text,items){
 
 async function renderPageForVision(page){
  const base=page.getViewport({scale:1});
- const targetWidth=base.width>0?Math.min(1250,Math.max(900,base.width*1.35)):1100;
+ const targetWidth=base.width>0?Math.min(1500,Math.max(1050,base.width*1.55)):1300;
  const scale=targetWidth/base.width;
  const viewport=page.getViewport({scale});
  const canvas=document.createElement('canvas');
@@ -830,16 +831,74 @@ async function renderPageForVision(page){
  return image;
 }
 
-async function readPageVisually(image,page,filename){
- const r=await fetch('/api/vision-page',{
-  method:'POST',
-  headers:{'content-type':'application/json'},
-  credentials:'include',
-  body:JSON.stringify({image,page,filename})
- });
- const d=await r.json().catch(()=>({}));
- if(!r.ok)throw new Error(d.message||('No se pudo leer visualmente la página '+page));
- return String(d.text||'').trim()||'[Página sin contenido legible]';
+let tesseractLoader=null;
+let ocrScheduler=null;
+let ocrSchedulerPromise=null;
+let ocrJobCount=0;
+
+async function ensureTesseract(){
+ if(window.Tesseract)return window.Tesseract;
+ if(!tesseractLoader){
+  tesseractLoader=new Promise((resolve,reject)=>{
+   const existing=document.querySelector('script[data-tesseract-local]');
+   if(existing){
+    existing.addEventListener('load',()=>window.Tesseract?resolve(window.Tesseract):reject(new Error('OCR local no disponible.')),{once:true});
+    existing.addEventListener('error',()=>reject(new Error('No se pudo cargar el motor OCR local.')),{once:true});
+    return;
+   }
+   const s=document.createElement('script');
+   s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+   s.async=true;
+   s.dataset.tesseractLocal='1';
+   s.onload=()=>window.Tesseract?resolve(window.Tesseract):reject(new Error('OCR local no disponible.'));
+   s.onerror=()=>reject(new Error('No se pudo cargar el motor OCR local.'));
+   document.head.appendChild(s);
+  });
+ }
+ return tesseractLoader;
+}
+
+async function getOcrScheduler(){
+ if(ocrScheduler&&ocrJobCount<300)return ocrScheduler;
+ if(ocrSchedulerPromise)return ocrSchedulerPromise;
+ ocrSchedulerPromise=(async()=>{
+  if(ocrScheduler){
+   try{await ocrScheduler.terminate()}catch{}
+   ocrScheduler=null;
+  }
+  const T=await ensureTesseract();
+  const scheduler=T.createScheduler();
+  const cores=Math.max(1,Number(navigator.hardwareConcurrency)||2);
+  const workerCount=cores>=6?2:1;
+  updateProcessDetail('OCR local · cargando motor en español…');
+  for(let i=0;i<workerCount;i++){
+   const worker=await T.createWorker('spa',1,{
+    logger:m=>{
+     if(m?.status==='recognizing text'&&Number.isFinite(m.progress)){
+      updateProcessDetail('OCR local · '+Math.round(m.progress*100)+'%');
+     }
+    }
+   });
+   scheduler.addWorker(worker);
+  }
+  ocrScheduler=scheduler;
+  ocrJobCount=0;
+  return scheduler;
+ })();
+ try{return await ocrSchedulerPromise}
+ finally{ocrSchedulerPromise=null}
+}
+
+async function readPageWithOcr(image,page){
+ const scheduler=await getOcrScheduler();
+ try{
+  const result=await scheduler.addJob('recognize',image);
+  ocrJobCount++;
+  const text=String(result?.data?.text||'').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+  return text||'[Página sin contenido legible por OCR]';
+ }catch{
+  throw new Error('El OCR local no pudo leer la página '+page+'.');
+ }
 }
 
 function loadQuickAnalysis(a,filename=''){
