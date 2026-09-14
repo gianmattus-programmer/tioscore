@@ -347,7 +347,7 @@ function showDrawerProcessing(file){
 }
 function friendlyAnalysisError(message=''){
  const s=String(message||'');
- if(/rate limit|tokens per min|tpm|openai|organization org-|platform\.openai\.com/i.test(s))
+ if(/webgpu|webllm|modelo local|ia local/i.test(s))
   return 'La IA local no pudo completar esta interpretación. Se usará el plan basado en reglas.';
  if(/ocr/i.test(s))return 'No se pudo leer una de las páginas escaneadas. Intenta con un PDF más nítido.';
  return s||'No se pudo completar la lectura del documento.';
@@ -396,19 +396,6 @@ const dz=$('#dropZone');
 ['dragenter','dragover'].forEach(ev=>dz?.addEventListener(ev,e=>{e.preventDefault();dz.classList.add('drag')}));
 ['dragleave','drop'].forEach(ev=>dz?.addEventListener(ev,e=>{e.preventDefault();dz.classList.remove('drag')}));
 dz?.addEventListener('drop',e=>{const f=e.dataTransfer.files[0];if(f?.type==='application/pdf')processPdf(f)});
-
-async function postAnalysis(text,filename,extractionMeta,mode='local'){
- const r=await fetch('/api/analyze',{
-  method:'POST',
-  headers:{'content-type':'application/json'},
-  credentials:'include',
-  body:JSON.stringify({filename,text,extractionMeta,mode})
- });
- const d=await r.json().catch(()=>({}));
- if(!r.ok)throw new Error(d.message||d.error||'No se pudo analizar el reporte');
- return d;
-}
-
 
 function reportCapture(text,patterns){
  for(const re of patterns){
