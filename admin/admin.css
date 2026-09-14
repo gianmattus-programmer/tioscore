@@ -1013,3 +1013,10 @@ html,body{max-width:100%;overflow-x:hidden}
  .read-status-track{width:30px}
  .workspace-meta{gap:7px}
 }
+
+
+/* ===== Error visible de IA local ===== */
+.ai-inline-error{max-width:420px;padding:4px 7px;border-radius:7px;background:#fff1f0;border:1px solid rgba(180,35,24,.14);color:var(--red);font-size:.6rem;font-weight:700;line-height:1.35}
+.ai-inline-error.info{background:#fff7e8;border-color:rgba(183,110,0,.15);color:var(--amber)}
+.ai-inline-error.ok{background:#eef8f2;border-color:rgba(26,122,74,.16);color:var(--green)}
+@media(max-width:760px){.ai-inline-error{max-width:100%;white-space:normal}}
