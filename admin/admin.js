@@ -909,13 +909,30 @@ function interpretationPayload(a){
  ];
  const datos={};
  for(const k of keep)if(raw[k]!=null&&String(raw[k]).trim()!=='')datos[k]=raw[k];
+ const deep=a.deepAnalysis&&a.sourceReport?.analysisMode==='deep'?{
+  observaciones:a.deepAnalysis.observations,
+  deudaActual:a.deepAnalysis.currentFinancialDebt,
+  porcentajeNormal:a.deepAnalysis.currentNormalPct,
+  vencidoSbsActual:a.deepAnalysis.currentOverdueSbs,
+  documentosImpagos:a.deepAnalysis.currentUnpaidDocs,
+  acreedor:a.deepAnalysis.creditor,
+  diasVencido:a.deepAnalysis.creditorDays,
+  picoDeuda:a.deepAnalysis.peakDebt,
+  fechaPico:a.deepAnalysis.peakDebtDate,
+  picoVencido:a.deepAnalysis.peakOverdue,
+  reduccionDesdePico:a.deepAnalysis.debtReductionFromPeak,
+  periodosRojos:a.deepAnalysis.redPeriods,
+  recientes:(a.deepAnalysis.recent||[]).slice(0,6).map(r=>({f:r.date,d:r.totalDebt,v:r.overdueSbs,doc:r.unpaidDocs,s:r.signal,n:r.normalPct}))
+ }:null;
  return {
   score:a.score,
   nivel:getScoreBand(a.score).category,
   confianza:a.confidence,
+  modo:a.sourceReport?.analysisMode||'fast',
   datos,
   entidades:(a.entities||[]).slice(0,8).map(x=>({n:x.name,p:x.product,s:x.balance,e:x.status||x.classification})),
-  obligaciones:(a.obligations||[]).slice(0,10).map(x=>({e:x.entity,p:x.product,s:x.balance,st:x.status,d:x.detail}))
+  obligaciones:(a.obligations||[]).slice(0,10).map(x=>({e:x.entity,p:x.product,s:x.balance,st:x.status,d:x.detail})),
+  profundo:deep
  };
 }
 
@@ -1161,16 +1178,21 @@ function mergeQwenNarrative(analysis,narrative){
 }
 async function runLocalInterpretation(analysis){
  await getLocalAiEngine();
- const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,1700);
+ const deep=analysis.sourceReport?.analysisMode==='deep'&&analysis.deepAnalysis;
+ const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,deep?3400:1700);
  const system='Eres asesor educativo de Tío Score en Perú. Usa únicamente los datos recibidos. No inventes cifras ni prometas aprobación o eliminación de registros. Responde SOLO JSON válido y breve.';
- const user='Devuelve exactamente este JSON: {"scoreDescription":"","summary":"","priorityAction":"","closing":"","followUpObjective":"","nextQuestion":""}. Interpreta el score y prioriza deuda vencida, atrasos, protestos, capacidad de pago y evolución. DATOS: '+payload;
+ const focus=deep
+  ?'Haz una lectura profunda: compara situación actual con el pico histórico, distingue deuda vigente de vencida/documentos impagos, explica mejoras y riesgos históricos, y prioriza la siguiente acción.'
+  :'Haz una lectura rápida: interpreta el estado actual y prioriza la acción más importante.';
+ const user='Devuelve exactamente este JSON: {"scoreDescription":"","summary":"","priorityAction":"","closing":"","followUpObjective":"","nextQuestion":""}. '+focus+' DATOS: '+payload;
  const messages=[{role:'system',content:system},{role:'user',content:user}];
+ const maxOut=deep?340:230;
  let text='';
  if(localAiBackend==='cpu'){
-  const out=await cpuQwenRequest('generate',{messages,maxNewTokens:230},300000);
+  const out=await cpuQwenRequest('generate',{messages,maxNewTokens:maxOut},deep?420000:300000);
   text=String(out.text||'');
  }else{
-  const reply=await localAiEngine.chat.completions.create({messages,temperature:0,max_tokens:230});
+  const reply=await localAiEngine.chat.completions.create({messages,temperature:0,max_tokens:maxOut});
   text=String(reply?.choices?.[0]?.message?.content||'');
  }
  const clean=cleanLocalJson(text);
@@ -1189,6 +1211,7 @@ function generateLocalInterpretation(analysis){
 
 async function processPdf(file,{background=false}={}){
  state.processUi=background?'drawer':'initial';
+ const analysisMode=state.analysisMode==='fast'?'fast':'deep';
  setReportReadProgress(1);
  if(!background)setAiWorkStatus('waiting','IA en espera',true);
  if(background){
@@ -1208,7 +1231,8 @@ async function processPdf(file,{background=false}={}){
   const parsed=parseSentinelReport(extracted.text,{
    totalPages:extracted.totalPages,
    digitalPages:extracted.digitalPages,
-   visualPages:extracted.visualPages
+   visualPages:extracted.visualPages,
+   analysisMode
   });
   const local=parsed.analysis;
   local.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + OCR local)':'Texto digital';
@@ -1221,11 +1245,11 @@ async function processPdf(file,{background=false}={}){
   // Mostrar el análisis completo por reglas inmediatamente. Qwen NO bloquea la ficha.
   localShown=true;
   loadAnalysis(local,false,file.name,{skipReveal:false,skipHistory:true});
-  $('#analysisMeta').textContent='Reporte leído 100% · IA local mejorando en segundo plano';
+  $('#analysisMeta').textContent='Reporte leído 100% · '+(analysisMode==='deep'?'lectura profunda lista · ':'')+'IA local mejorando en segundo plano';
   setWorkspaceReadProgress(100);
   setAiWorkStatus('processing','IA mejorando',true);
   updateProcessTitle('Análisis listo');
-  updateProcessDetail('Datos visibles. Qwen rápido está mejorando interpretación, plan y seguimiento en segundo plano…');
+  updateProcessDetail(analysisMode==='deep'?'Historial y evolución analizados. Qwen está refinando la asesoría profunda en segundo plano…':'Datos visibles. Qwen rápido está mejorando interpretación, plan y seguimiento en segundo plano…');
 
   // IndexedDB es local y rápido; guarda la versión inmediata.
   await saveToHistory(file.name);
