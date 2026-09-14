@@ -345,12 +345,19 @@ function showDrawerProcessing(file){
  $('#drawerUploadTitle').textContent='Leyendo '+file.name;
  $('#drawerUploadDetail').textContent='Revisando el reporte sin interrumpir la vista del cliente actual…';
 }
+function friendlyAnalysisError(message=''){
+ const s=String(message||'');
+ if(/rate limit|tokens per min|tpm|openai|organization org-|platform\.openai\.com/i.test(s))
+  return 'La interpretación con IA está temporalmente ocupada. Los datos del reporte pueden seguir procesándose localmente.';
+ if(/ocr/i.test(s))return 'No se pudo leer una de las páginas escaneadas. Intenta con un PDF más nítido.';
+ return s||'No se pudo completar la lectura del documento.';
+}
 function showDrawerError(message){
  state.drawerProcessing=false;
  $('#newUploadReady')?.classList.add('hidden');
  $('#newUploadProcessing')?.classList.add('hidden');
  $('#newUploadError')?.classList.remove('hidden');
- $('#drawerErrorText').textContent=message||'Ocurrió un error.';
+ $('#drawerErrorText').textContent=friendlyAnalysisError(message);
  $('#closeNewAnalysisDrawer').disabled=false;
 }
 function updateProcessTitle(text){
@@ -659,43 +666,34 @@ async function processPdf(file,{background=false}={}){
   local.sourceReport.totalPages=extracted.totalPages;
   local.sourceReport.visualPages=extracted.visualPages;
 
-  if(parsed.parserConfidence>=70){
-   localShown=true;
-   loadQuickAnalysis(local,file.name);
-   $('#analysisMeta').textContent='Parser local · preparando interpretación…';
-   updateProcessTitle('Datos extraídos');
-   updateProcessDetail('Parser local '+parsed.parserConfidence+'% · IA solo para Interpretación y plan…');
+  localShown=true;
+  loadQuickAnalysis(local,file.name);
 
-   try{
-    const interpretation=await postInterpretation(local);
-    Object.assign(local,interpretation);
-    local.confidence=parsed.parserConfidence;
-    local.sourceReport.parserMode='Parser local + IA de interpretación';
-   }catch{
-    local.sourceReport.parserMode='Parser local · interpretación por reglas';
-   }
+  const confidenceLabel=parsed.parserConfidence>=70?'Parser local':'Lectura local parcial';
+  $('#analysisMeta').textContent=confidenceLabel+' · preparando interpretación…';
+  updateProcessTitle('Datos extraídos');
+  updateProcessDetail(confidenceLabel+' '+parsed.parserConfidence+'% · IA solo para Interpretación y plan…');
 
-   if(background){
-    updateProcessTitle('Análisis listo');
-    updateProcessDetail('Datos procesados localmente; la IA solo redactó la interpretación.');
-   }
-   loadAnalysis(local,false,file.name,{skipReveal:true});
-  }else{
-   updateProcessTitle('Formato requiere apoyo de IA');
-   updateProcessDetail('Confianza del parser '+parsed.parserConfidence+'% · usando análisis completo como respaldo…');
-   const d=await postAnalysis(extracted.text,file.name,{
-    totalPages:extracted.totalPages,
-    digitalPages:extracted.digitalPages,
-    visualPages:extracted.visualPages,
-    mode:extracted.visualPages>0?'hybrid':'digital'
-   },'full');
-   if(!d.analysis.sourceReport)d.analysis.sourceReport={};
-   d.analysis.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + OCR local)':'Texto digital';
-   d.analysis.sourceReport.totalPages=extracted.totalPages;
-   d.analysis.sourceReport.visualPages=extracted.visualPages;
-   d.analysis.sourceReport.parserMode='IA completa de respaldo';
-   loadAnalysis(d.analysis,false,file.name);
+  try{
+   const interpretation=await postInterpretation(local);
+   Object.assign(local,interpretation);
+   local.confidence=parsed.parserConfidence;
+   local.sourceReport.parserMode=parsed.parserConfidence>=70
+    ?'Parser local + IA de interpretación'
+    :'Parser/OCR local parcial + IA de interpretación';
+  }catch{
+   local.sourceReport.parserMode=parsed.parserConfidence>=70
+    ?'Parser local · interpretación por reglas'
+    :'Parser/OCR local parcial · interpretación por reglas';
   }
+
+  if(background){
+   updateProcessTitle('Análisis listo');
+   updateProcessDetail(parsed.parserConfidence>=70
+    ?'Datos procesados localmente; la IA solo redactó la interpretación.'
+    :'Lectura parcial procesada sin enviar el PDF completo a IA.');
+  }
+  loadAnalysis(local,false,file.name,{skipReveal:true});
 
   if(background){
    state.drawerProcessing=false;
@@ -709,7 +707,7 @@ async function processPdf(file,{background=false}={}){
    }else showDrawerError(err.message);
   }else{
    updateProcessTitle('No se pudo completar la lectura');
-   updateProcessDetail(err.message);
+   updateProcessDetail(friendlyAnalysisError(err.message));
   }
  }
 }
