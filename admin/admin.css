@@ -977,3 +977,10 @@ html,body{max-width:100%;overflow-x:hidden}
  .history-comparison span:last-child{border-bottom:0}
  .history-client-card>header{align-items:flex-start}
 }
+
+
+/* ===== Indicador de motor de interpretación ===== */
+.block-tools{display:flex;align-items:center;gap:9px}
+.engine-badge{display:inline-flex;align-items:center;padding:4px 7px;border-radius:999px;font-size:.58rem;font-weight:800;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--line)}
+.engine-badge.engine-ai{background:#eef8f2;color:var(--green);border-color:rgba(26,122,74,.2)}
+.engine-badge.engine-rules{background:#fff7e8;color:var(--amber);border-color:rgba(183,110,0,.18)}
