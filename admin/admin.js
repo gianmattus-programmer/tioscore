@@ -893,6 +893,7 @@ async function processPdf(file,{background=false}={}){
 
   // IndexedDB es local y rápido; guarda la versión inmediata.
   await saveToHistory(file.name);
+  const analysisHistoryId=state.currentHistoryId;
 
   if(background){
    state.drawerProcessing=false;
@@ -913,7 +914,7 @@ async function processPdf(file,{background=false}={}){
     loadAnalysis(local,false,file.name,{skipReveal:true,skipHistory:true,keepHistoryId:true});
     $('#analysisMeta').textContent='Actualizado por IA local · '+dateNow();
    }
-   await persistCurrentHistory().catch(()=>{});
+   await persistHistoryAnalysis(analysisHistoryId,local).catch(()=>{});
   }).catch(err=>{
    const aiErr=String(err?.message||err||'IA local no disponible');
    local.sourceReport.interpretationEngine='Reglas locales';
@@ -924,7 +925,7 @@ async function processPdf(file,{background=false}={}){
    setLocalAiStatus('Reglas activas · Qwen no disponible');
    const self=$('#aiSelfTest');if(self)self.textContent='Falló · '+aiErr.slice(0,120);
    if(state.analysis===local)renderInterpretationEngine(local);
-   persistCurrentHistory().catch(()=>{});
+   persistHistoryAnalysis(analysisHistoryId,local).catch(()=>{});
   });
  }catch(err){
   if(background){
@@ -1561,6 +1562,19 @@ async function persistCurrentHistory(){
  item.followUp=structuredClone(state.analysis.followUp||{});
  item.snapshot=historySnapshot(state.analysis);
  await historyPut(item);
+}
+async function persistHistoryAnalysis(id,analysis){
+ if(!id||!analysis)return;
+ const item=state.history.find(x=>x.id===id);
+ if(!item)return;
+ item.analysis=structuredClone(analysis);
+ item.summary=analysis.summary||item.summary;
+ item.followUp=structuredClone(analysis.followUp||{});
+ item.snapshot=historySnapshot(analysis);
+ item.score=Number(analysis.score)||item.score||0;
+ item.risk=analysis.risk||item.risk||'';
+ await historyPut(item);
+ renderHistory();
 }
 function saveNotes(){
  if(state.analysis)state.analysis.notes=$('#advisorNotes').value;
