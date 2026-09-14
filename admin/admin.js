@@ -105,13 +105,13 @@ function setAnalysisMode(mode){
  syncAnalysisModeUI();
 }
 function syncAnalysisModeUI(){
- $('.analysis-mode-btn').forEach(btn=>{
+ $$('.analysis-mode-btn').forEach(btn=>{
   const active=btn.dataset.analysisMode===state.analysisMode;
   btn.classList.toggle('active',active);
   btn.setAttribute('aria-pressed',active?'true':'false');
  });
 }
-$('.analysis-mode-btn').forEach(btn=>btn.addEventListener('click',()=>setAnalysisMode(btn.dataset.analysisMode)));
+$$('.analysis-mode-btn').forEach(btn=>btn.addEventListener('click',()=>setAnalysisMode(btn.dataset.analysisMode)));
 function isSurnameLabel(label=''){
  return /(^|\b)(apellido|apellidos)(\b|$)/i.test(String(label));
 }
