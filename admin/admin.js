@@ -455,16 +455,36 @@ function sanitizePersonName(value=''){
  if(words.some(w=>w.length<2||!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'.-]+$/.test(w)))return '';
  return words.map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
 }
+function sentinelFirstGivenName(value=''){
+ const clean=sanitizePersonName(value);
+ if(!clean)return '';
+ const words=clean.split(' ').filter(Boolean);
+ if(words.length>=3)return words[2];
+ return words[0]||'';
+}
 function extractPersonName(text=''){
+ const source=String(text||'');
+
+ // Sentinel muestra el titular en formato: DNI ######## - APELLIDO APELLIDO NOMBRE(S)
+ const sentinelPatterns=[
+  /\bDNI\s+\d{8}\s*-\s*([A-ZÁÉÍÓÚÜÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÜÑ]{2,}){2,4})\b/,
+  /\bDNI\s+\d{8}\s+([A-ZÁÉÍÓÚÜÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÜÑ]{2,}){2,4})\s+[\d.,]+\s+[\d.,]+/
+ ];
+ for(const re of sentinelPatterns){
+  const m=source.match(re);
+  const given=sentinelFirstGivenName(m?.[1]||'');
+  if(given)return given;
+ }
+
  const patterns=[
   /(?:nombres?\s+y\s+apellidos?|nombre\s+completo)\s*[:\-]?\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i,
   /(?:titular|nombre)\s*[:\-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i,
   /(?:cliente)\s*[:\-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i
  ];
  for(const re of patterns){
-  const m=String(text).match(re);
+  const m=source.match(re);
   const clean=sanitizePersonName(m?.[1]||'');
-  if(clean)return clean;
+  if(clean)return firstName(clean);
  }
  return '';
 }
@@ -819,7 +839,7 @@ async function getLocalAiEngine(){
   renderHardwareStatus(hw);
   if(!hw.webgpu)throw new Error('WebGPU no disponible. Se usará el plan por reglas.');
 
-  setLocalAiStatus('Cargando catálogo estable de Qwen…');
+  setLocalAiStatus('Cargando Qwen 0.5B…');
   const webllm=await import(LOCAL_AI_MODULE);
   const ids=(webllm.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id).filter(Boolean);
   const preferred=hw.shaderF16?LOCAL_AI_CANDIDATES_F16:LOCAL_AI_CANDIDATES_F32;
