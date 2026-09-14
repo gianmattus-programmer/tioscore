@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#fbfaf7">
   <title>Tío Score · Análisis privado</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp">
-  <link rel="stylesheet" href="/admin/admin.css?v=20260914-summaryfix1">
+  <link rel="stylesheet" href="/admin/admin.css?v=20260914-readprogress1">
 </head>
 <body>
   <div id="configGate" class="gate hidden">
@@ -95,7 +95,8 @@
             <h3 id="drawerUploadTitle">Preparando reporte…</h3>
             <p id="drawerUploadDetail">Leyendo el documento.</p>
           </div>
-          <div class="drawer-progress-line"><i></i></div>
+          <div class="drawer-progress-meta"><span>Lectura del reporte</span><b id="drawerReadPct">0%</b></div>
+          <div class="drawer-progress-line"><i id="drawerReadBar"></i></div>
           <small class="drawer-live-note">La vista del cliente actual permanece sin cambios.</small>
         </div>
 
@@ -116,7 +117,7 @@
           </div>
           <label class="btn primary file-btn">Seleccionar PDF<input id="pdfInput" type="file" accept="application/pdf"></label>
           <div id="dropZone" class="drop-zone">Arrastra el reporte aquí</div>
-          <div id="uploadState" class="upload-state hidden"><div class="spinner"></div><div><b id="uploadTitle">Procesando…</b><small id="uploadDetail">Leyendo el documento</small></div></div>
+          <div id="uploadState" class="upload-state hidden"><div class="spinner"></div><div class="upload-state-copy"><div class="upload-state-head"><b id="uploadTitle">Procesando…</b><strong id="uploadReadPct">0%</strong></div><small id="uploadDetail">Leyendo el documento</small><div class="read-progress-track"><i id="uploadReadBar"></i></div></div></div>
         </section>
 
         <section id="resultPanel" class="workspace hidden">
@@ -134,7 +135,7 @@
             </div>
           </div>
           <div class="workspace-meta">
-            <div><span id="reportTypeBadge" class="report-badge">Sentinel · Reporte detectado</span><span id="analysisMeta">Procesado ahora</span></div>
+            <div class="workspace-status-group"><span id="reportTypeBadge" class="report-badge">Sentinel · Reporte detectado</span><span id="analysisMeta">Procesado ahora</span><span id="reportReadBadge" class="read-status-badge"><span class="read-status-track"><i id="reportReadBar"></i></span><b id="reportReadPct">0%</b><small>leído</small></span><span id="aiWorkBadge" class="ai-work-badge waiting">IA en espera</span></div>
             <div class="workspace-meta-right admin-only"><span id="confidenceValue">Confianza —</span><button id="printBtn" class="mini-btn">Guardar PDF</button></div>
           </div>
 
@@ -337,6 +338,6 @@
     </main>
   </div>
 
-  <script type="module" src="/admin/admin.js?v=20260914-fastlocal1"></script>
+  <script type="module" src="/admin/admin.js?v=20260914-readprogress1"></script>
 </body>
 </html>
