@@ -888,7 +888,7 @@ function parseSentinelReport(source,meta={}){
  const overdueShare=(sumSbs+sumOther)>0?[{label:'Vencidos + SBS',value:sumSbs},{label:'Otros + Doc. impagos',value:sumOther}]:[];
  const periodCovered=deepAnalysis?.history?.length?[deepAnalysis.history.at(-1)?.date,deepAnalysis.latestDate].filter(Boolean).join(' → '):'';
  const analysis={
-  sourceReport:{provider:/\bsentinel\b/i.test(text)?'Sentinel':'Reporte detectado',type:'Reporte crediticio',reportDate:updated||creation||'',periodCovered,sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local',analysisMode},
+  sourceReport:{provider:/\bsentinel\b/i.test(text)?'Sentinel':/\bexperian\b/i.test(text)?'Experian':'Reporte detectado',type:'Reporte crediticio',reportDate:updated||creation||'',periodCovered,sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local',analysisMode},
   client:{name:firstName(name||'Cliente'),document:protectedDocument(dni||ruc)||'Documento protegido',age:'',reportDate:updated||creation||'',entities:institutions.join(' · ')},
   score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,deepAnalysis,
   metrics,debtSeries,debtComposition,monthlyBehavior,entities,obligations,inquiries:[],raw,reportSections,
@@ -1831,7 +1831,7 @@ function fallbackCharts(x){
  const comp=x.debtComposition||[],monthly=x.monthlyBehavior||[],series=x.debtSeries||[];
  return {
   noteEvolution:series.map((v,i)=>({label:v.label,value:Math.min(4,Math.max(0,(Number(v.value)||0)/(Math.max(...series.map(q=>Number(q.value)||0),1))*4))})),
-  classificationHistory:monthly.map(v=>({label:v.period,NOR:/normal|al día/i.test(v.status||'')?100:0,CPP:/cpp|potencial/i.test(v.status||'')?100:0,DEF:/deficiente/i.test(v.status||'')?100:0,DUD:/dudoso/i.test(v.status||'')?100:0,PER:/pérdida|perdida/i.test(v.status||'')?100:0})),
+  classificationHistory:monthly.filter(v=>/(normal|al día|cpp|potencial|deficiente|dudoso|pérdida|perdida)/i.test(v.status||'')).map(v=>({label:v.period,NOR:/normal|al día/i.test(v.status||'')?100:0,CPP:/cpp|potencial/i.test(v.status||'')?100:0,DEF:/deficiente/i.test(v.status||'')?100:0,DUD:/dudoso/i.test(v.status||'')?100:0,PER:/pérdida|perdida/i.test(v.status||'')?100:0})),
   overdueByType:[],
   overdueShare:[],
   currentVsOverdue:series.map(v=>({label:v.label,current:Number(v.value)||0,overdue:0})),
@@ -1848,7 +1848,7 @@ function renderReportCharts(x){
  renderCurrentVsOverdue(use('currentVsOverdue'));
  renderPieChart('#institutionShareChart',use('institutionShare'),['#5f93ba','#65c856','#f3d94f','#efa04b','#9a55dc','#64d2dc']);
 }
-function renderCoverage(x){const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;$('#coverageBox').innerHTML='<div class="coverage-item"><span>Fuente detectada</span><b>'+esc(s.provider||'No identificada')+'</b></div><div class="coverage-item"><span>Tipo de reporte</span><b>'+esc(s.type||'No identificado')+'</b></div><div class="coverage-item"><span>Método de lectura</span><b>'+esc(s.extractionMode||'Texto digital')+'</b></div><div class="coverage-item"><span>Páginas del reporte</span><b>'+esc(s.totalPages||'No informado')+'</b></div><div class="coverage-item"><span>Páginas leídas visualmente</span><b>'+esc(s.visualPages||0)+'</b></div><div class="coverage-item"><span>Periodo cubierto</span><b>'+esc(s.periodCovered||'No informado')+'</b></div><div class="coverage-item"><span>Secciones estructuradas</span><b>'+det+(exp?' / '+exp:'')+'</b></div><div class="coverage-item"><span>Confianza de extracción</span><b>'+esc(x.confidence||0)+'%</b></div>'}
+function renderCoverage(x){const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;$('#coverageBox').innerHTML='<div class="coverage-item"><span>Fuente detectada</span><b>'+esc(s.provider||'No identificada')+'</b></div><div class="coverage-item"><span>Tipo de reporte</span><b>'+esc(s.type||'No identificado')+'</b></div><div class="coverage-item"><span>Método de lectura</span><b>'+esc(s.extractionMode||'Texto digital')+'</b></div><div class="coverage-item"><span>Páginas del reporte</span><b>'+esc(s.totalPages||'No informado')+'</b></div><div class="coverage-item"><span>Páginas leídas visualmente</span><b>'+esc(s.visualPages||0)+'</b></div><div class="coverage-item"><span>Periodo cubierto</span><b>'+esc(s.periodCovered||'No informado')+'</b></div><div class="coverage-item"><span>Secciones estructuradas</span><b>'+det+(exp?' / '+exp:'')+'</b></div><div class="coverage-item"><span>Modo de análisis</span><b>'+esc(s.analysisMode==='deep'?'Profundo':'Rápido')+'</b></div><div class="coverage-item"><span>Confianza de extracción</span><b>'+esc(x.confidence||0)+'%</b></div>'}
 
 $('#copyActionsBtn')?.addEventListener('click',async()=>{if(!state.analysis)return;const t=state.analysis.recommendations.map((r,i)=>(i+1)+'. '+r.title+'\n'+r.text).join('\n\n');await navigator.clipboard.writeText(t);$('#copyActionsBtn').textContent='Copiado';setTimeout(()=>$('#copyActionsBtn').textContent='Copiar',1200)});
 $$('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{await navigator.clipboard.writeText($(b.dataset.copy)?.innerText||'');b.textContent='Copiado';setTimeout(()=>b.textContent='Copiar',1000)}));
