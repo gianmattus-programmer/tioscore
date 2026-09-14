@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const state={analysis:null,editing:false,clientMode:false,drawerProcessing:false,processUi:'initial',history:JSON.parse(localStorage.getItem('ts-admin-history')||'[]')};
+const state={analysis:null,editing:false,clientMode:false,drawerProcessing:false,processUi:'initial',history:[],historyReady:false,currentHistoryId:null,historyFilter:''};
 
 const demo={
  sourceReport:{provider:'Sentinel',type:'Reporte crediticio integral',reportDate:'11/09/2026',periodCovered:'2023–2026',sectionsDetected:9,sectionsExpected:10},
@@ -90,7 +90,7 @@ async function bootstrap(){
  }catch{show('#configGate')}
 }
 function show(sel){['#configGate','#loginGate','#app'].forEach(x=>$(x)?.classList.add('hidden'));$(sel)?.classList.remove('hidden')}
-function showApp(){show('#app');renderHistory();checkAIStatus();setTimeout(()=>warmLocalAI(),900)}
+async function showApp(){show('#app');await initHistoryStore();renderHistory();checkAIStatus();setTimeout(()=>warmLocalAI(),900)}
 function esc(v=''){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function dateNow(){return new Intl.DateTimeFormat('es-PE',{dateStyle:'medium',timeStyle:'short'}).format(new Date())}
 function money(n){const v=Number(n);return Number.isFinite(v)?'S/ '+v.toLocaleString('es-PE',{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2}):String(n??'—')}
@@ -283,6 +283,7 @@ function resetAnalysis(){
  closeNewAnalysisDrawer(true);
  switchView('analysis');
  state.analysis=null;
+ state.currentHistoryId=null;
  $('#resultPanel').classList.add('hidden');
  $('#uploadPanel').classList.remove('hidden');
  $('#pdfInput').value='';
@@ -628,8 +629,12 @@ function interpretationPayload(a){
 
 let localAiEngine=null;
 let localAiPromise=null;
-let localAiModelId='';
+let localAiWorker=null;
+let localAiQueue=Promise.resolve();
+let localAiHardware=null;
 const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.85';
+const LOCAL_AI_MODEL='Qwen2.5-1.5B-Instruct-q4f16_1-MLC';
+const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-worker1';
 
 function setLocalAiStatus(textValue,ok=false){
  const el=$('#aiStatus');
@@ -642,47 +647,76 @@ function localAiProgressText(p){
  const pct=Number(p?.progress);
  return Number.isFinite(pct)?raw+' '+Math.round(pct*100)+'%':raw;
 }
-function chooseLocalModel(webllm){
- const ids=(webllm.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id).filter(Boolean);
- const prefs=[
-  /Qwen3[-_.]?1\.7B.*(?:Instruct|MLC)/i,
-  /Qwen2\.5[-_.]?1\.5B.*Instruct/i,
-  /Llama[-_.]?3\.2[-_.]?1B.*Instruct/i,
-  /SmolLM2[-_.]?1\.7B.*Instruct/i,
-  /gemma[-_.]?2[-_.]?2b.*(?:it|instruct)/i,
-  /Phi[-_.]?3\.5.*mini.*instruct/i
- ];
- for(const re of prefs){const id=ids.find(x=>re.test(x));if(id)return id}
- const small=ids.find(x=>/(?:0\.5B|0\.6B|1B|1\.5B|1\.7B|2B|3B|mini)/i.test(x)&&/(?:instruct|chat|it)/i.test(x));
- if(small)return small;
- throw new Error('No se encontró un modelo local liviano compatible.');
+async function inspectLocalHardware(){
+ if(localAiHardware)return localAiHardware;
+ const result={webgpu:false,label:'No disponible',detail:''};
+ if(!('gpu' in navigator)){
+  result.detail='El navegador no expone WebGPU.';
+  localAiHardware=result;
+  return result;
+ }
+ try{
+  const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
+  if(!adapter){result.detail='No se encontró un adaptador WebGPU.';localAiHardware=result;return result}
+  const info=adapter.info||{};
+  result.webgpu=true;
+  result.label=[info.vendor,info.architecture].filter(Boolean).join(' · ')||'WebGPU compatible';
+  result.detail='Modelo fijo: '+LOCAL_AI_MODEL+' · ejecución en Web Worker';
+ }catch(e){
+  result.detail='WebGPU detectado, pero no se pudo inicializar el adaptador.';
+ }
+ localAiHardware=result;
+ return result;
+}
+function renderHardwareStatus(hw){
+ const el=$('#aiHardware');
+ if(!el)return;
+ el.textContent=hw.webgpu?(hw.label+' · compatible'):(hw.detail||'No compatible');
+ el.className=hw.webgpu?'ok':'';
 }
 async function getLocalAiEngine(){
  if(localAiEngine)return localAiEngine;
  if(localAiPromise)return localAiPromise;
- if(!('gpu' in navigator))throw new Error('Este navegador no tiene WebGPU. Se usará el plan por reglas.');
  localAiPromise=(async()=>{
-  setLocalAiStatus('Cargando IA local…');
+  const hw=await inspectLocalHardware();
+  renderHardwareStatus(hw);
+  if(!hw.webgpu)throw new Error('WebGPU no disponible. Se usará el plan por reglas.');
+
+  setLocalAiStatus('Preparando modelo fijo…');
   const webllm=await import(LOCAL_AI_MODULE);
-  localAiModelId=chooseLocalModel(webllm);
+  const available=(webllm.prebuiltAppConfig?.model_list||[]).some(x=>x.model_id===LOCAL_AI_MODEL);
+  if(!available)throw new Error('El modelo local fijo no está disponible en esta versión de WebLLM.');
+
+  if(localAiWorker){try{localAiWorker.terminate()}catch{}}
+  localAiWorker=new Worker(LOCAL_AI_WORKER,{type:'module',name:'tioscore-local-ai'});
   const appConfig={...webllm.prebuiltAppConfig,cacheBackend:'indexeddb'};
-  const engine=await webllm.CreateMLCEngine(localAiModelId,{
-   appConfig,
-   initProgressCallback:p=>{
-    const msg=localAiProgressText(p);
-    setLocalAiStatus(msg);
-    if(state.processUi==='drawer'&&state.drawerProcessing)updateProcessDetail(msg+' · descarga solo la primera vez.');
+  const engine=await webllm.CreateWebWorkerMLCEngine(
+   localAiWorker,
+   LOCAL_AI_MODEL,
+   {
+    appConfig,
+    initProgressCallback:p=>{
+     const msg=localAiProgressText(p);
+     setLocalAiStatus(msg);
+     if(state.processUi==='drawer'&&state.drawerProcessing)updateProcessDetail(msg+' · descarga solo la primera vez.');
+    }
    }
-  });
+  );
   localAiEngine=engine;
-  setLocalAiStatus('Lista · '+localAiModelId,true);
+  setLocalAiStatus('Lista · Qwen 2.5 1.5B',true);
   return engine;
  })();
  try{return await localAiPromise}
- finally{localAiPromise=null}
+ catch(e){
+  if(localAiWorker){try{localAiWorker.terminate()}catch{}}
+  localAiWorker=null;
+  throw e;
+ }finally{localAiPromise=null}
 }
 async function warmLocalAI(){
- if(!('gpu' in navigator)){setLocalAiStatus('WebGPU no disponible · usando reglas');return}
+ const hw=await inspectLocalHardware();
+ renderHardwareStatus(hw);
+ if(!hw.webgpu){setLocalAiStatus('Reglas activas · sin WebGPU');return}
  try{await getLocalAiEngine()}catch(e){setLocalAiStatus('Reglas activas · IA local no disponible')}
 }
 function cleanLocalJson(s=''){
@@ -702,19 +736,25 @@ function normalizeLocalInterpretation(x){
  v.followUp.questions=Array.isArray(v.followUp.questions)?v.followUp.questions:[];
  return v;
 }
-async function generateLocalInterpretation(analysis){
+async function runLocalInterpretation(analysis){
  const engine=await getLocalAiEngine();
- const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,14000);
- const system='Eres el asesor educativo de Tío Score en Perú. Trabajas solo con datos ya extraídos de un reporte crediticio. No inventes cifras, no prometas aprobación de créditos, eliminación de registros ni aumento del score. Prioriza hechos verificables, deuda vencida, atrasos, protestos, capacidad de pago, obligaciones tributarias/laborales y evolución. El seguimiento debe servir para una próxima asesoría personalizada. Responde SOLO JSON válido.';
- const user='Genera interpretación, plan y seguimiento personalizado a partir de estos datos. Estructura exacta: {"scoreDescription":"","summary":"","tags":[""],"alerts":[{"level":"red|yellow|green","title":"","text":""}],"recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],"closing":{"headline":"Conclusión de la lectura","text":""},"checklist":[""],"followUp":{"timeframe":"","objective":"","nextReview":"","verificationPoints":[""],"questions":[""]}}. Usa 2-5 alertas, 3-5 recomendaciones, 3-6 verificaciones y 2-5 preguntas para la próxima asesoría. DATOS: '+payload;
+ const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,12000);
+ const system='Eres el asesor educativo de Tío Score en Perú. Trabajas solo con datos ya extraídos de un reporte crediticio. Nunca modifiques ni inventes cifras. No prometas aprobación de créditos, eliminación de registros ni aumento del score. Prioriza hechos verificables, deuda vencida, atrasos, protestos, capacidad de pago, obligaciones tributarias/laborales y evolución. El seguimiento debe servir para una próxima asesoría personalizada. Responde SOLO JSON válido.';
+ const user='Genera interpretación, plan y seguimiento personalizado. Estructura exacta: {"scoreDescription":"","summary":"","tags":[""],"alerts":[{"level":"red|yellow|green","title":"","text":""}],"recommendations":[{"title":"","text":"","impact":"Prioridad 1|Prioridad 2|Prioridad 3|Seguimiento"}],"closing":{"headline":"Conclusión de la lectura","text":""},"checklist":[""],"followUp":{"timeframe":"","objective":"","nextReview":"","verificationPoints":[""],"questions":[""]}}. Usa 2-5 alertas, 3-5 recomendaciones, 3-6 verificaciones y 2-5 preguntas para la próxima asesoría. DATOS: '+payload;
  const reply=await engine.chat.completions.create({
   messages:[{role:'system',content:system},{role:'user',content:user}],
-  temperature:0.2,
-  max_tokens:1400,
+  temperature:0.15,
+  max_tokens:1200,
   response_format:{type:'json_object'}
  });
  const text=reply?.choices?.[0]?.message?.content||'';
  return normalizeLocalInterpretation(JSON.parse(cleanLocalJson(text)));
+}
+function generateLocalInterpretation(analysis){
+ const job=()=>runLocalInterpretation(analysis);
+ const current=localAiQueue.then(job,job);
+ localAiQueue=current.catch(()=>{});
+ return current;
 }
 
 async function processPdf(file,{background=false}={}){
@@ -755,7 +795,7 @@ async function processPdf(file,{background=false}={}){
    Object.assign(local,interpretation);
    local.confidence=parsed.parserConfidence;
    local.sourceReport.parserMode=parsed.parserConfidence>=70
-    ?'Parser local + IA de interpretación'
+    ?'Parser local + IA local · Qwen 2.5 1.5B'
     :'Parser/OCR local parcial + IA local';
   }catch{
    local.sourceReport.parserMode=parsed.parserConfidence>=70
@@ -1010,6 +1050,7 @@ function loadQuickAnalysis(a,filename=''){
 }
 
 function loadAnalysis(a,isDemo=false,filename='',options={}){
+ if(options.historyId)state.currentHistoryId=options.historyId;else if(!isDemo)state.currentHistoryId=null;
  state.analysis=normalize(a);const x=state.analysis;
  $('#uploadPanel').classList.add('hidden');$('#resultPanel').classList.remove('hidden');
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
@@ -1135,7 +1176,18 @@ function normalize(a){
  return x
 }
 function renderRecommendations(items){$('#recommendations').innerHTML=items.map((r,i)=>'<div class="rec"><div class="rec-num">'+(i+1)+'</div><div><h4>'+esc(r.title)+'</h4><p>'+esc(r.text)+'</p><span class="impact">'+esc(r.impact||'')+'</span></div></div>').join('')||'<div class="empty-line">Sin recomendaciones suficientes.</div>'}
-function renderChecklist(items){$('#checklist').innerHTML=items.map((t,i)=>'<label class="check"><input type="checkbox" data-i="'+i+'"><span>'+esc(t)+'</span></label>').join('');$$('#checklist input').forEach(v=>v.addEventListener('change',()=>{v.closest('.check').classList.toggle('done',v.checked);updateCheck()}));updateCheck()}
+function renderChecklist(items){
+ state.analysis=state.analysis||{};
+ state.analysis.checkState=state.analysis.checkState&&typeof state.analysis.checkState==='object'?state.analysis.checkState:{};
+ $('#checklist').innerHTML=items.map((t,i)=>'<label class="check '+(state.analysis.checkState[i]?'done':'')+'"><input type="checkbox" data-i="'+i+'" '+(state.analysis.checkState[i]?'checked':'')+'><span>'+esc(t)+'</span></label>').join('');
+ $$('#checklist input').forEach(v=>v.addEventListener('change',()=>{
+  v.closest('.check').classList.toggle('done',v.checked);
+  state.analysis.checkState[v.dataset.i]=v.checked;
+  updateCheck();
+  persistCurrentHistory().catch(()=>{});
+ }));
+ updateCheck();
+}
 function renderFollowUp(f={}){
  const timing=$('#followUpTiming');if(timing)timing.textContent=f.timeframe||'Por definir';
  const objective=$('#followUpObjective');if(objective)objective.textContent=f.objective||'Definir objetivos para la siguiente revisión.';
@@ -1277,16 +1329,192 @@ $('#copyActionsBtn')?.addEventListener('click',async()=>{if(!state.analysis)retu
 $$('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{await navigator.clipboard.writeText($(b.dataset.copy)?.innerText||'');b.textContent='Copiado';setTimeout(()=>b.textContent='Copiar',1000)}));
 $('#printBtn')?.addEventListener('click',()=>window.print());
 $('#saveNotesBtn')?.addEventListener('click',saveNotes);let noteTimer;$('#advisorNotes')?.addEventListener('input',()=>{clearTimeout(noteTimer);$('#notesStatus').textContent='Guardando…';noteTimer=setTimeout(saveNotes,600)});
-function saveNotes(){if(state.analysis)state.analysis.notes=$('#advisorNotes').value;$('#notesStatus').textContent='Guardado local'}
-function saveToHistory(filename){const item={id:crypto.randomUUID(),name:state.analysis.client?.name||filename||'Cliente',score:state.analysis.score,risk:state.analysis.risk,date:new Date().toISOString(),summary:state.analysis.summary,analysis:state.analysis};state.history.unshift(item);state.history=state.history.slice(0,30);localStorage.setItem('ts-admin-history',JSON.stringify(state.history));renderHistory()}
-function renderHistory(){const box=$('#historyList');if(!box)return;if(!state.history.length){box.innerHTML='<div class="empty-line">Aún no hay reportes guardados.</div>';return}box.innerHTML=state.history.map(x=>'<div class="history-item"><div><b>'+esc(x.name)+'</b><small>'+new Date(x.date).toLocaleString('es-PE')+'</small></div><div><small>Score</small><span class="score-mini">'+esc(x.score)+'</span></div><div><small>Estado</small><b>'+esc(x.risk)+'</b></div><div><small>'+esc((x.summary||'').slice(0,90))+'…</small></div><button class="mini-btn open-history" data-id="'+x.id+'">Abrir</button></div>').join('');$$('.open-history').forEach(b=>b.addEventListener('click',()=>{const x=state.history.find(h=>h.id===b.dataset.id);if(x){switchView('analysis');loadAnalysis(structuredClone(x.analysis),true)}}))}
-function checkAIStatus(){
- if(!('gpu' in navigator)){
-  setLocalAiStatus('WebGPU no disponible · reglas activas');
-  return;
+const HISTORY_DB='tioscore-advisory-history';
+const HISTORY_STORE='reports';
+let historyDbPromise=null;
+
+function openHistoryDb(){
+ if(historyDbPromise)return historyDbPromise;
+ historyDbPromise=new Promise((resolve,reject)=>{
+  const req=indexedDB.open(HISTORY_DB,1);
+  req.onupgradeneeded=()=>{
+   const db=req.result;
+   if(!db.objectStoreNames.contains(HISTORY_STORE)){
+    const store=db.createObjectStore(HISTORY_STORE,{keyPath:'id'});
+    store.createIndex('clientKey','clientKey',{unique:false});
+    store.createIndex('date','date',{unique:false});
+   }
+  };
+  req.onsuccess=()=>resolve(req.result);
+  req.onerror=()=>reject(req.error||new Error('No se pudo abrir el historial local.'));
+ });
+ return historyDbPromise;
+}
+async function historyAll(){
+ const db=await openHistoryDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(HISTORY_STORE,'readonly');
+  const req=tx.objectStore(HISTORY_STORE).getAll();
+  req.onsuccess=()=>resolve((req.result||[]).sort((a,b)=>new Date(b.date)-new Date(a.date)));
+  req.onerror=()=>reject(req.error);
+ });
+}
+async function historyPut(item){
+ const db=await openHistoryDb();
+ return new Promise((resolve,reject)=>{
+  const tx=db.transaction(HISTORY_STORE,'readwrite');
+  tx.objectStore(HISTORY_STORE).put(item);
+  tx.oncomplete=()=>resolve(item);
+  tx.onerror=()=>reject(tx.error);
+ });
+}
+function historyClientKey(a){
+ const name=firstName(a?.client?.name||'cliente').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'');
+ const doc=String(a?.client?.document||'').replace(/\s+/g,'');
+ return (name||'cliente')+'|'+(doc||'sin-documento');
+}
+function historyNumber(raw,labels){
+ for(const key of labels){
+  if(raw&&raw[key]!=null){
+   const n=reportMoneyNumber(raw[key]);
+   if(n!=null)return n;
+  }
  }
- if(localAiEngine)setLocalAiStatus('Lista · '+localAiModelId,true);
- else setLocalAiStatus('IA local · se carga y cachea en este equipo');
+ return null;
+}
+function historySnapshot(a){
+ const raw=a?.raw||{};
+ return {
+  score:Number(a?.score)||0,
+  currentDebt:historyNumber(raw,['Deuda vigente SBS / Microfinanzas','Deuda vigente · Consulta rápida','Deuda vigente']),
+  overdueDebt:historyNumber(raw,['Deuda vencida SBS / Microfinanzas','Monto de documentos vencidos','Deuda vencida']),
+  daysPastDue:Math.max(Number(raw['Días de vencimiento del documento'])||0,Number(raw['Días de atraso visibles en BCP'])||0)
+ };
+}
+function deltaText(current,previous,prefix=''){
+ if(current==null||previous==null)return 'Sin comparación';
+ const d=current-previous;
+ if(Math.abs(d)<.005)return prefix+'Sin cambio';
+ return prefix+(d>0?'+':'')+d.toLocaleString('es-PE',{maximumFractionDigits:2});
+}
+async function initHistoryStore(){
+ try{
+  if(navigator.storage?.persist)await navigator.storage.persist();
+  const db=await openHistoryDb();
+  const legacy=JSON.parse(localStorage.getItem('ts-admin-history')||'[]');
+  if(Array.isArray(legacy)&&legacy.length){
+   for(const old of legacy){
+    const analysis=old.analysis||{};
+    await historyPut({
+     id:old.id||crypto.randomUUID(),
+     clientKey:historyClientKey(analysis),
+     name:firstName(old.name||analysis.client?.name||'Cliente'),
+     document:analysis.client?.document||'Documento protegido',
+     score:Number(old.score)||Number(analysis.score)||0,
+     risk:old.risk||analysis.risk||'',
+     date:old.date||new Date().toISOString(),
+     summary:old.summary||analysis.summary||'',
+     followUp:analysis.followUp||{},
+     snapshot:historySnapshot(analysis),
+     analysis
+    });
+   }
+   localStorage.removeItem('ts-admin-history');
+  }
+  state.history=await historyAll();
+  state.historyReady=true;
+ }catch(e){
+  state.history=[];
+  state.historyReady=false;
+ }
+}
+async function persistCurrentHistory(){
+ if(!state.currentHistoryId||!state.analysis)return;
+ const item=state.history.find(x=>x.id===state.currentHistoryId);
+ if(!item)return;
+ item.analysis=structuredClone(state.analysis);
+ item.summary=state.analysis.summary||item.summary;
+ item.followUp=structuredClone(state.analysis.followUp||{});
+ item.snapshot=historySnapshot(state.analysis);
+ await historyPut(item);
+}
+function saveNotes(){
+ if(state.analysis)state.analysis.notes=$('#advisorNotes').value;
+ $('#notesStatus').textContent='Guardado local';
+ persistCurrentHistory().catch(()=>{});
+}
+async function saveToHistory(filename){
+ if(!state.analysis)return;
+ const analysis=structuredClone(state.analysis);
+ const item={
+  id:crypto.randomUUID(),
+  clientKey:historyClientKey(analysis),
+  name:firstName(analysis.client?.name||filename||'Cliente'),
+  document:analysis.client?.document||'Documento protegido',
+  score:Number(analysis.score)||0,
+  risk:analysis.risk||'',
+  date:new Date().toISOString(),
+  summary:analysis.summary||'',
+  followUp:structuredClone(analysis.followUp||{}),
+  snapshot:historySnapshot(analysis),
+  analysis
+ };
+ await historyPut(item);
+ state.currentHistoryId=item.id;
+ state.history.unshift(item);
+ renderHistory();
+}
+function historyGroups(){
+ const groups=new Map();
+ const query=state.historyFilter.trim().toLowerCase();
+ for(const item of state.history){
+  const hay=(item.name+' '+item.document+' '+item.summary).toLowerCase();
+  if(query&&!hay.includes(query))continue;
+  if(!groups.has(item.clientKey))groups.set(item.clientKey,[]);
+  groups.get(item.clientKey).push(item);
+ }
+ return [...groups.entries()].map(([clientKey,reports])=>({clientKey,reports:reports.sort((a,b)=>new Date(b.date)-new Date(a.date))}))
+  .sort((a,b)=>new Date(b.reports[0].date)-new Date(a.reports[0].date));
+}
+function renderHistoryStats(groups){
+ const box=$('#historyStats');if(!box)return;
+ const reports=groups.reduce((n,g)=>n+g.reports.length,0);
+ box.innerHTML='<span><b>'+groups.length+'</b> clientes</span><span><b>'+reports+'</b> reportes</span><span><b>IndexedDB</b> almacenamiento local</span>';
+}
+function renderHistory(){
+ const box=$('#historyList');if(!box)return;
+ const groups=historyGroups();
+ renderHistoryStats(groups);
+ if(!state.historyReady&&state.history.length===0){box.innerHTML='<div class="empty-line">Preparando historial local…</div>';return}
+ if(!groups.length){box.innerHTML='<div class="empty-line">No hay asesorías que coincidan con la búsqueda.</div>';return}
+ box.innerHTML=groups.map(group=>{
+  const reports=group.reports,latest=reports[0],prev=reports[1];
+  const ls=latest.snapshot||{},ps=prev?.snapshot||{};
+  const scoreDelta=prev?deltaText(ls.score,ps.score):'Primera lectura';
+  const debtDelta=prev?deltaText(ls.currentDebt,ps.currentDebt,'S/ '):'Sin anterior';
+  const overdueDelta=prev?deltaText(ls.overdueDebt,ps.overdueDebt,'S/ '):'Sin anterior';
+  const follow=latest.followUp||{};
+  const rows=reports.map((r,i)=>{
+   const prior=reports[i+1],rs=r.snapshot||{},prs=prior?.snapshot||{};
+   const compare=prior?'Score '+deltaText(rs.score,prs.score)+' · Deuda '+deltaText(rs.currentDebt,prs.currentDebt,'S/ '):'Lectura inicial';
+   const checks=r.analysis?.checklist||[],done=Object.values(r.analysis?.checkState||{}).filter(Boolean).length;
+   return '<div class="history-report-row"><div><b>'+new Date(r.date).toLocaleDateString('es-PE')+'</b><small>'+esc(r.risk||'')+' · '+esc(compare)+'</small></div><div><small>Score</small><strong>'+esc(r.score||'—')+'</strong></div><div><small>Seguimiento</small><strong>'+done+' / '+checks.length+'</strong></div><button class="mini-btn open-history" data-id="'+r.id+'">Abrir</button></div>';
+  }).join('');
+  return '<article class="history-client-card"><header><div><span class="eyebrow">CLIENTE</span><h3>'+esc(latest.name)+'</h3><small>'+esc(latest.document||'Documento protegido')+' · '+reports.length+' lectura'+(reports.length===1?'':'s')+'</small></div><div class="history-latest-score"><small>Último score</small><b>'+esc(latest.score||'—')+'</b></div></header><div class="history-comparison"><span><small>Δ Score</small><b>'+esc(scoreDelta)+'</b></span><span><small>Δ Deuda vigente</small><b>'+esc(debtDelta)+'</b></span><span><small>Δ Vencida</small><b>'+esc(overdueDelta)+'</b></span><span><small>Próxima asesoría</small><b>'+esc(follow.timeframe||'Por definir')+'</b></span></div><p class="history-summary">'+esc(latest.summary||'Sin resumen disponible.')+'</p><details><summary>Ver historial y comparaciones</summary><div class="history-report-list">'+rows+'</div></details></article>';
+ }).join('');
+ $$('.open-history').forEach(b=>b.addEventListener('click',()=>{
+  const x=state.history.find(h=>h.id===b.dataset.id);
+  if(x){switchView('analysis');loadAnalysis(structuredClone(x.analysis),true,'',{historyId:x.id})}
+ }));
+}
+$('#historySearch')?.addEventListener('input',e=>{state.historyFilter=e.target.value||'';renderHistory()});
+
+async function checkAIStatus(){
+ const hw=await inspectLocalHardware();
+ renderHardwareStatus(hw);
+ if(!hw.webgpu){setLocalAiStatus('Reglas activas · sin WebGPU');return}
+ if(localAiEngine)setLocalAiStatus('Lista · Qwen 2.5 1.5B',true);
+ else setLocalAiStatus('Qwen 2.5 1.5B · pendiente de carga');
 }
 
 bootstrap();
