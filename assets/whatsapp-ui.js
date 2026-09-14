@@ -2,7 +2,6 @@
   const root=document.querySelector('.ts-wa');
   if(!root)return;
   const trigger=root.querySelector('.ts-wa-trigger');
-  const topButton=root.querySelector('.ts-wa-top');
   const close=root.querySelector('.ts-wa-close');
   const panel=root.querySelector('.ts-wa-panel');
   const backdrop=root.querySelector('.ts-wa-backdrop');
@@ -41,16 +40,8 @@
 
   choices.forEach(choice=>choice.addEventListener('click',()=>setMessage(choice.getAttribute('data-wa-message')||defaultMessage,choice)));
 
-  const updateTopButton=()=>root.classList.toggle('has-scrolled',window.scrollY>120);
-  topButton?.addEventListener('click',()=>{
-    setOpen(false);
-    window.scrollTo({top:0,behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
-  });
-  updateTopButton();
-
   // Desktop: se oculta durante cualquier desplazamiento y reaparece al detenerse.
   window.addEventListener('scroll',()=>{
-    updateTopButton();
     if(mobileQuery.matches)return;
     setOpen(false);
     root.classList.add('is-scrolling');
@@ -65,4 +56,3 @@
 
   setMessage(defaultMessage,null);
 })();
-
