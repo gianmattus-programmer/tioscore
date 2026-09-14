@@ -641,6 +641,88 @@ function buildRuleInterpretation(a){
   }
  };
 }
+function sentinelDateLabel(date=''){
+ const p=String(date).split('/');
+ return p.length===3?p[0]+'/'+p[1]+'/'+p[2].slice(-2):String(date);
+}
+function sampleHistoricalRows(rows,max=24){
+ const chronological=[...(rows||[])].reverse();
+ if(chronological.length<=max)return chronological;
+ const out=[];
+ for(let i=0;i<max;i++){
+  const idx=Math.round(i*(chronological.length-1)/(max-1));
+  const row=chronological[idx];
+  if(!out.includes(row))out.push(row);
+ }
+ return out;
+}
+function parseSentinelHistory(text=''){
+ const rows=[];
+ const re=/\b(\d{2}\/\d{2}\/\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/g;
+ const seen=new Set();
+ let m;
+ while((m=re.exec(String(text)))){
+  if(seen.has(m[1]))continue;
+  seen.add(m[1]);
+  const num=v=>Number(String(v).replace(/,/g,''))||0;
+  rows.push({
+   date:m[1],signal:Number(m[2])||0,entities:Number(m[3])||0,totalDebt:num(m[4]),normalPct:Number(m[5])||0,
+   overdueSbs:num(m[6]),otherOverdue:num(m[7]),unpaidDocs:num(m[8]),taxDebt:num(m[9]),laborDebt:num(m[10]),
+   countA:Number(m[11])||0,countB:Number(m[12])||0,countC:Number(m[13])||0
+  });
+ }
+ return rows;
+}
+function parseSentinelUnpaidDocument(text=''){
+ const m=String(text).match(/Documentos Impagos\s+([\d,]+\.\d{2})\s+([A-ZÁÉÍÓÚÜÑ0-9][A-ZÁÉÍÓÚÜÑ0-9 .&'\-]{2,80}?)\s+([\d,]+\.\d{2})\s+(\d{1,4})\b/i);
+ if(!m)return null;
+ const creditor=String(m[2]||'').replace(/\s+/g,' ').trim();
+ return {total:reportMoneyNumber(m[1])||0,creditor,amount:reportMoneyNumber(m[3])||0,days:Number(m[4])||0};
+}
+function buildSentinelDeepAnalysis(text='',analysisMode='deep'){
+ if(analysisMode!=='deep')return null;
+ const history=parseSentinelHistory(text);
+ const unpaid=parseSentinelUnpaidDocument(text);
+ if(!history.length&&!unpaid)return {mode:'deep',observations:0,signals:[],recent:[]};
+ const latest=history[0]||{};
+ const peakDebt=history.reduce((best,r)=>(r.totalDebt||0)>(best.totalDebt||0)?r:best,history[0]||{});
+ const peakOverdue=history.reduce((best,r)=>(r.overdueSbs||0)>(best.overdueSbs||0)?r:best,history[0]||{});
+ const peakDocs=history.reduce((best,r)=>(r.unpaidDocs||0)>(best.unpaidDocs||0)?r:best,history[0]||{});
+ const redPeriods=history.filter(r=>r.signal>2).length;
+ const yellowPeriods=history.filter(r=>r.signal>=.001&&r.signal<=2).length;
+ const greenPeriods=history.filter(r=>r.signal<.001).length;
+ const reduction=peakDebt?.totalDebt>0?Math.max(-999,Math.min(100,(peakDebt.totalDebt-(latest.totalDebt||0))/peakDebt.totalDebt*100)):null;
+ const signals=[];
+ if(reduction!=null&&reduction>20)signals.push({level:'good',title:'Deuda financiera reducida',text:'La deuda SBS/Micro actual es '+reduction.toFixed(1)+'% menor que el pico histórico identificado ('+reportMoney(peakDebt.totalDebt)+' el '+peakDebt.date+').'});
+ if((latest.overdueSbs||0)===0&&(peakOverdue?.overdueSbs||0)>0)signals.push({level:'good',title:'Sin vencido SBS actual',text:'Actualmente no aparece deuda SBS/Micro vencida, aunque el historial llegó a '+reportMoney(peakOverdue.overdueSbs)+' el '+peakOverdue.date+'.'});
+ if((latest.unpaidDocs||0)>0||unpaid?.amount>0)signals.push({level:'bad',title:'Documento impago actual',text:(unpaid?.creditor?unpaid.creditor+': ':'')+reportMoney(unpaid?.amount||latest.unpaidDocs)+(unpaid?.days?' · '+unpaid.days+' días vencido':'')+'.'});
+ if(redPeriods>0)signals.push({level:'warn',title:'Historial con señales rojas',text:'Se identificaron '+redPeriods+' registros históricos con semáforo superior a 2. El perfil actual debe leerse junto con esa evolución.'});
+ if((latest.normalPct||0)>=100)signals.push({level:'good',title:'Calificación financiera actual normal',text:'La última posición histórica identificada registra 100% de calificación normal en SBS/Micro.'});
+ return {
+  mode:'deep',
+  observations:history.length,
+  latestDate:latest.date||'',
+  latestSignal:latest.signal??null,
+  currentFinancialDebt:latest.totalDebt??null,
+  currentNormalPct:latest.normalPct??null,
+  currentOverdueSbs:latest.overdueSbs??null,
+  currentUnpaidDocs:Math.max(latest.unpaidDocs||0,unpaid?.amount||0),
+  creditor:unpaid?.creditor||'',
+  creditorDays:unpaid?.days||0,
+  peakDebt:peakDebt?.totalDebt||0,
+  peakDebtDate:peakDebt?.date||'',
+  peakOverdue:peakOverdue?.overdueSbs||0,
+  peakOverdueDate:peakOverdue?.date||'',
+  peakUnpaidDocs:peakDocs?.unpaidDocs||0,
+  peakUnpaidDocsDate:peakDocs?.date||'',
+  debtReductionFromPeak:reduction,
+  redPeriods,yellowPeriods,greenPeriods,
+  signals,
+  recent:history.slice(0,8),
+  history
+ };
+}
+
 function parseSentinelReport(source,meta={}){
  const text=String(source||'').replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
  const raw={};
