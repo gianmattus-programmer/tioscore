@@ -288,6 +288,9 @@ function resetAnalysis(){
  $('#uploadPanel').classList.remove('hidden');
  $('#pdfInput').value='';
  $('#uploadState').classList.add('hidden');
+ setWorkspaceReadProgress(0);
+ const up=$('#uploadReadPct'),ub=$('#uploadReadBar');if(up)up.textContent='0%';if(ub)ub.style.width='0%';
+ setAiWorkStatus('waiting','IA en espera',true);
 }
 $('#demoBtn')?.addEventListener('click',()=>loadAnalysis(structuredClone(demo),true));
 
@@ -339,6 +342,7 @@ function showDrawerReady(){
 }
 function showDrawerProcessing(file){
  state.drawerProcessing=true;
+ const dp=$('#drawerReadPct'),db=$('#drawerReadBar');if(dp)dp.textContent='0%';if(db)db.style.width='0%';
  $('#newUploadReady')?.classList.add('hidden');
  $('#newUploadProcessing')?.classList.remove('hidden');
  $('#newUploadError')?.classList.add('hidden');
@@ -368,6 +372,41 @@ function updateProcessTitle(text){
 function updateProcessDetail(text){
  if(state.processUi==='drawer')$('#drawerUploadDetail').textContent=text;
  else $('#uploadDetail').textContent=text;
+}
+function clampProgress(value){return Math.max(0,Math.min(100,Math.round(Number(value)||0)))}
+function setWorkspaceReadProgress(value){
+ const pct=clampProgress(value);
+ const t=$('#reportReadPct'),bar=$('#reportReadBar');
+ if(t)t.textContent=pct+'%';
+ if(bar)bar.style.width=pct+'%';
+}
+function setReportReadProgress(value){
+ const pct=clampProgress(value);
+ if(state.processUi==='drawer'){
+  const t=$('#drawerReadPct'),bar=$('#drawerReadBar');
+  if(t)t.textContent=pct+'%';
+  if(bar)bar.style.width=pct+'%';
+  return;
+ }
+ const t=$('#uploadReadPct'),bar=$('#uploadReadBar');
+ if(t)t.textContent=pct+'%';
+ if(bar)bar.style.width=pct+'%';
+ setWorkspaceReadProgress(pct);
+}
+function setAiWorkStatus(kind='waiting',label='IA en espera',force=false){
+ if(state.processUi==='drawer'&&!force)return;
+ const el=$('#aiWorkBadge');if(!el)return;
+ el.className='ai-work-badge '+kind;
+ el.textContent=label;
+}
+function syncAnalysisProgress(x){
+ const read=Number(x?.sourceReport?.readProgress);
+ setWorkspaceReadProgress(Number.isFinite(read)?read:100);
+ const engine=String(x?.sourceReport?.interpretationEngine||'');
+ if(/IA local/i.test(engine))setAiWorkStatus('done','IA lista',true);
+ else if(/respuesta inmediata/i.test(engine))setAiWorkStatus('processing','IA mejorando',true);
+ else if(/Reglas locales/i.test(engine))setAiWorkStatus('fallback','Reglas locales',true);
+ else setAiWorkStatus('waiting','IA en espera',true);
 }
 $('#closeNewAnalysisDrawer')?.addEventListener('click',()=>closeNewAnalysisDrawer());
 $('#drawerRetryBtn')?.addEventListener('click',showDrawerReady);
@@ -860,6 +899,8 @@ function generateLocalInterpretation(analysis){
 
 async function processPdf(file,{background=false}={}){
  state.processUi=background?'drawer':'initial';
+ setReportReadProgress(1);
+ if(!background)setAiWorkStatus('waiting','IA en espera',true);
  if(background){
   showDrawerProcessing(file);
  }else{
@@ -873,6 +914,7 @@ async function processPdf(file,{background=false}={}){
   const extracted=await extractPdfHybrid(file);
   if(extracted.text.length<100)throw new Error('No se logró obtener suficiente contenido legible del reporte.');
 
+  setReportReadProgress(96);
   const parsed=parseSentinelReport(extracted.text,{
    totalPages:extracted.totalPages,
    digitalPages:extracted.digitalPages,
@@ -882,12 +924,16 @@ async function processPdf(file,{background=false}={}){
   local.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + OCR local)':'Texto digital';
   local.sourceReport.totalPages=extracted.totalPages;
   local.sourceReport.visualPages=extracted.visualPages;
+  local.sourceReport.readProgress=100;
+  setReportReadProgress(100);
   local.sourceReport.interpretationEngine='Reglas locales · respuesta inmediata';
 
   // Mostrar el análisis completo por reglas inmediatamente. Qwen NO bloquea la ficha.
   localShown=true;
   loadAnalysis(local,false,file.name,{skipReveal:false,skipHistory:true});
-  $('#analysisMeta').textContent='Listo · IA local mejorando en segundo plano';
+  $('#analysisMeta').textContent='Reporte leído 100% · IA local mejorando en segundo plano';
+  setWorkspaceReadProgress(100);
+  setAiWorkStatus('processing','IA mejorando',true);
   updateProcessTitle('Análisis listo');
   updateProcessDetail('Datos visibles. Qwen rápido está mejorando interpretación, plan y seguimiento en segundo plano…');
 
@@ -912,7 +958,9 @@ async function processPdf(file,{background=false}={}){
 
    if(state.analysis===local){
     loadAnalysis(local,false,file.name,{skipReveal:true,skipHistory:true,keepHistoryId:true});
-    $('#analysisMeta').textContent='Actualizado por IA local · '+dateNow();
+    $('#analysisMeta').textContent='Reporte leído 100% · IA completada · '+dateNow();
+    setWorkspaceReadProgress(100);
+    setAiWorkStatus('done','IA lista',true);
    }
    await persistHistoryAnalysis(analysisHistoryId,local).catch(()=>{});
   }).catch(err=>{
@@ -924,7 +972,7 @@ async function processPdf(file,{background=false}={}){
     :'Parser/OCR parcial · reglas rápidas';
    setLocalAiStatus('Reglas activas · Qwen no disponible');
    const self=$('#aiSelfTest');if(self)self.textContent='Falló · '+aiErr.slice(0,120);
-   if(state.analysis===local)renderInterpretationEngine(local);
+   if(state.analysis===local){renderInterpretationEngine(local);setWorkspaceReadProgress(100);setAiWorkStatus('fallback','Reglas locales',true);$('#analysisMeta').textContent='Reporte leído 100% · IA local no disponible';}
    persistHistoryAnalysis(analysisHistoryId,local).catch(()=>{});
   });
  }catch(err){
@@ -967,6 +1015,7 @@ async function extractPdfHybrid(file,{onQuickText}={}){
  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
  const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
  const totalPages=Math.min(pdf.numPages,60);
+ setReportReadProgress(5);
  const pages=Array(totalPages).fill('');
  const visualJobs=[];
  let digitalPages=0,visualPages=0,quickTriggered=false;
@@ -993,10 +1042,12 @@ async function extractPdfHybrid(file,{onQuickText}={}){
    visualPages++;
    visualJobs.push({page,pageNumber:i,index:i-1});
   }
+  setReportReadProgress(5+(i/Math.max(totalPages,1))*45);
  }
 
  if(visualJobs.length){
   let done=0;
+  setReportReadProgress(52);
   updateProcessDetail('OCR local: preparando lectura de '+visualPages+' página'+(visualPages===1?'':'s')+' sin tokens…');
   await getOcrScheduler();
   const ocrParallel=(Number(navigator.hardwareConcurrency)||2)>=8&&(Number(navigator.deviceMemory)||0)>=8?3:2;
@@ -1005,11 +1056,15 @@ async function extractPdfHybrid(file,{onQuickText}={}){
    const visualText=await readPageWithOcr(image,job.pageNumber);
    pages[job.index]='--- PÁGINA '+job.pageNumber+' · OCR LOCAL ---\n'+visualText;
    done++;
+   setReportReadProgress(52+(done/Math.max(visualPages,1))*40);
    updateProcessDetail('OCR local '+done+' de '+visualPages+' · procesamiento en este navegador…');
    maybeStartQuick();
   });
+ }else{
+  setReportReadProgress(92);
  }
 
+ setReportReadProgress(94);
  const text=pages.filter(Boolean).join('\n\n').slice(0,240000);
  if(!quickTriggered&&typeof onQuickText==='function'&&text.length>=100){
   quickTriggered=true;
@@ -1144,6 +1199,7 @@ function loadQuickAnalysis(a,filename=''){
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
  $('#analysisMeta').textContent='Vista rápida · completando análisis…';
  renderInterpretationEngine(x);
+ syncAnalysisProgress(x);
  $('#confidenceValue').textContent='Lectura preliminar '+(x.confidence||0)+'%';
  const visibleName=firstName(x.client.name||'Cliente');
  $('#clientName').textContent=visibleName;
@@ -1180,6 +1236,7 @@ function loadAnalysis(a,isDemo=false,filename='',options={}){
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
  $('#analysisMeta').textContent=(isDemo?'Demo':'Procesado')+' · '+dateNow();
  renderInterpretationEngine(x);
+ syncAnalysisProgress(x);
  $('#confidenceValue').textContent='Confianza '+(x.confidence||0)+'%';
  const visibleName=firstName(x.client.name||'Cliente');
  $('#clientName').textContent=visibleName;
