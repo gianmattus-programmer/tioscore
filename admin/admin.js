@@ -674,10 +674,12 @@ function parseSentinelHistory(text=''){
  return rows;
 }
 function parseSentinelUnpaidDocument(text=''){
- const m=String(text).match(/Documentos Impagos\s+([\d,]+\.\d{2})\s+([A-ZÁÉÍÓÚÜÑ0-9][A-ZÁÉÍÓÚÜÑ0-9 .&'\-]{2,80}?)\s+([\d,]+\.\d{2})\s+(\d{1,4})\b/i);
- if(!m)return null;
- const creditor=String(m[2]||'').replace(/\s+/g,' ').trim();
- return {total:reportMoneyNumber(m[1])||0,creditor,amount:reportMoneyNumber(m[3])||0,days:Number(m[4])||0};
+ const source=String(text);
+ const total=reportCapture(source,[/Documentos Impagos\s+([\d,]+\.\d{2})/i]);
+ const m=source.match(/Documentos Impagos\s+[\d,]+\.\d{2}\s+(?:\d+\s+)?([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ0-9 .&'\-]{2,80}?)\s+([\d,]+\.\d{2})\s+(?:D[ií]as\s+Venc\.?\s*)?(\d{1,4})\b/i);
+ if(!m)return total?{total:reportMoneyNumber(total)||0,creditor:'',amount:reportMoneyNumber(total)||0,days:0}:null;
+ const creditor=String(m[1]||'').replace(/\s+/g,' ').trim();
+ return {total:reportMoneyNumber(total||m[2])||0,creditor,amount:reportMoneyNumber(m[2])||0,days:Number(m[3])||0};
 }
 function buildSentinelDeepAnalysis(text='',analysisMode='deep'){
  if(analysisMode!=='deep')return null;
@@ -743,7 +745,7 @@ function parseSentinelReport(source,meta={}){
  const updated=reportCapture(text,[/(?:informaci[oó]n actualizada(?: al)?|informationUpdated)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i,/(?:informaci[oó]n actualizada(?: al)?)[^\d]{0,10}(\d{1,2}\s+de\s+[A-Za-zÁÉÍÓÚáéíóú]+\s+del?\s+\d{4})/i]);
  const documentType=reportCapture(text,[/(?:tipo de documento|documentType)\s*[:\-]?\s*(DNI|CE|RUC|PASAPORTE)/i])||(dni?'DNI':ruc?'RUC':'');
  const banc=reportCapture(text,[/bancarizad[oa]\s*[:\-]?\s*(S[IÍ]|NO)\b/i]);
- const capacity=reportCapture(text,[/(?:capacidad(?: de)? pago(?: mensual)?|capacityOfMonthlyPayment)\s*[:\-]?\s*((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i]);
+ const capacity=reportCapture(text,[/(?:capacidad(?: de)? pago(?: mensual)?|capacityOfMonthlyPayment)\s*[:\-]?\s*((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i,/(?:capacidad(?: de)? pago(?: mensual)?).{0,240}?((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i]);
  const quickDebt=reportCapture(text,[
   /(?:deuda vigente\s*(?:·|-)?\s*consulta r[aá]pida|currentDebtQuickQuery)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
   /Consulta R[aá]pida.{0,700}?\b([\d]{1,3}(?:,[\d]{3})*\.\d{2})\b/i
@@ -761,7 +763,7 @@ function parseSentinelReport(source,meta={}){
  ]);
  const overdueDays=reportCapture(text,[
   /(?:d[ií]as de vencimiento(?: del documento)?|overdueDocumentDays)\s*[:\-]?\s*(\d{1,4})/i,
-  /Documentos Impagos.{0,180}?\b[\d]{1,3}(?:,[\d]{3})*\.\d{2}\s+(\d{1,4})\b/i
+  /Documentos Impagos.{0,220}?\b[\d]{1,3}(?:,[\d]{3})*\.\d{2}\s+(?:D[ií]as\s+Venc\.?\s*)?(\d{1,4})\b/i
  ]);
  const bcpDays=reportCapture(text,[/(?:d[ií]as de atraso visibles? en BCP|visibleBCPOverdueDays)\s*[:\-]?\s*(\d{1,4})/i]);
  const protestedUnreg=reportCapture(text,[/(?:documentos protestados no regularizados|protestedDocumentsUnregularized)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
