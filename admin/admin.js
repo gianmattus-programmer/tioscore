@@ -656,6 +656,16 @@ function sampleHistoricalRows(rows,max=24){
  }
  return out;
 }
+function collapseHistoryMonthly(rows=[]){
+ const seen=new Set(),monthly=[];
+ for(const row of rows){
+  const p=String(row.date||'').split('/');
+  const key=p.length===3?p[1]+'/'+p[2]:row.date;
+  if(!key||seen.has(key))continue;
+  seen.add(key);monthly.push(row);
+ }
+ return monthly;
+}
 function parseSentinelHistory(text=''){
  const rows=[];
  const re=/\b(\d{2}\/\d{2}\/\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/g;
@@ -729,7 +739,7 @@ function parseSentinelReport(source,meta={}){
  const text=String(source||'').replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
  const analysisMode=meta.analysisMode==='fast'?'fast':'deep';
  const deepAnalysis=buildSentinelDeepAnalysis(text,analysisMode);
- const historySample=deepAnalysis?sampleHistoricalRows(deepAnalysis.history||[],24):[];
+ const historySample=deepAnalysis?sampleHistoricalRows(collapseHistoryMonthly(deepAnalysis.history||[]),24):[];
  const raw={};
  const add=(label,value)=>{if(value!==''&&value!=null&&!/^(?:no informado|no registrado)$/i.test(String(value).trim()))raw[label]=String(value).trim()};
  const name=extractPersonName(text);
