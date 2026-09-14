@@ -1,5 +1,5 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const state={analysis:null,editing:false,clientMode:false,drawerProcessing:false,processUi:'initial',history:[],historyReady:false,currentHistoryId:null,historyFilter:''};
+const state={analysis:null,editing:false,clientMode:false,drawerProcessing:false,processUi:'initial',history:[],historyReady:false,currentHistoryId:null,historyFilter:'',analysisMode:localStorage.getItem('ts-analysis-mode')||'deep'};
 
 const demo={
  sourceReport:{provider:'Sentinel',type:'Reporte crediticio integral',reportDate:'11/09/2026',periodCovered:'2023–2026',sectionsDetected:9,sectionsExpected:10},
@@ -90,7 +90,7 @@ async function bootstrap(){
  }catch{show('#configGate')}
 }
 function show(sel){['#configGate','#loginGate','#app'].forEach(x=>$(x)?.classList.add('hidden'));$(sel)?.classList.remove('hidden')}
-async function showApp(){show('#app');checkAIStatus();warmLocalAI();await initHistoryStore();renderHistory()}
+async function showApp(){show('#app');syncAnalysisModeUI();checkAIStatus();warmLocalAI();await initHistoryStore();renderHistory()}
 function esc(v=''){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function dateNow(){return new Intl.DateTimeFormat('es-PE',{dateStyle:'medium',timeStyle:'short'}).format(new Date())}
 function money(n){const v=Number(n);return Number.isFinite(v)?'S/ '+v.toLocaleString('es-PE',{minimumFractionDigits:v%1?2:0,maximumFractionDigits:2}):String(n??'—')}
@@ -99,6 +99,19 @@ function firstName(value){
  if(!s||/no informado/i.test(s))return s||'Cliente';
  return s.split(' ')[0];
 }
+function setAnalysisMode(mode){
+ state.analysisMode=mode==='fast'?'fast':'deep';
+ localStorage.setItem('ts-analysis-mode',state.analysisMode);
+ syncAnalysisModeUI();
+}
+function syncAnalysisModeUI(){
+ $('.analysis-mode-btn').forEach(btn=>{
+  const active=btn.dataset.analysisMode===state.analysisMode;
+  btn.classList.toggle('active',active);
+  btn.setAttribute('aria-pressed',active?'true':'false');
+ });
+}
+$('.analysis-mode-btn').forEach(btn=>btn.addEventListener('click',()=>setAnalysisMode(btn.dataset.analysisMode)));
 function isSurnameLabel(label=''){
  return /(^|\b)(apellido|apellidos)(\b|$)/i.test(String(label));
 }
