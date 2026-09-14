@@ -1135,7 +1135,7 @@ function normalize(a){
  return x
 }
 function renderRecommendations(items){$('#recommendations').innerHTML=items.map((r,i)=>'<div class="rec"><div class="rec-num">'+(i+1)+'</div><div><h4>'+esc(r.title)+'</h4><p>'+esc(r.text)+'</p><span class="impact">'+esc(r.impact||'')+'</span></div></div>').join('')||'<div class="empty-line">Sin recomendaciones suficientes.</div>'}
-function renderChecklist(items){$('#checklist').innerHTML=items.map((t,i)=>'<label class="check"><input type="checkbox" data-i="'+i+'"><span>'+esc(t)+'</span></label>').join('');$('#checklist input').forEach(v=>v.addEventListener('change',()=>{v.closest('.check').classList.toggle('done',v.checked);updateCheck()}));updateCheck()}
+function renderChecklist(items){$('#checklist').innerHTML=items.map((t,i)=>'<label class="check"><input type="checkbox" data-i="'+i+'"><span>'+esc(t)+'</span></label>').join('');$$('#checklist input').forEach(v=>v.addEventListener('change',()=>{v.closest('.check').classList.toggle('done',v.checked);updateCheck()}));updateCheck()}
 function renderFollowUp(f={}){
  const timing=$('#followUpTiming');if(timing)timing.textContent=f.timeframe||'Por definir';
  const objective=$('#followUpObjective');if(objective)objective.textContent=f.objective||'Definir objetivos para la siguiente revisión.';
