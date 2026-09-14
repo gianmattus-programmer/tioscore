@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#fbfaf7">
   <title>Tío Score · Análisis privado</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp">
-  <link rel="stylesheet" href="/admin/admin.css?v=20260914-qwencpu1">
+  <link rel="stylesheet" href="/admin/admin.css?v=20260914-deep1">
 </head>
 <body>
   <div id="configGate" class="gate hidden">
@@ -73,6 +73,11 @@
           <div class="drawer-pdf-mark">PDF</div>
           <h3>Añade el siguiente reporte</h3>
           <p>El cliente actual seguirá visible en la columna central hasta que el nuevo análisis esté completamente listo.</p>
+          <div class="analysis-mode-picker compact" aria-label="Profundidad del siguiente análisis">
+            <span>Modo</span>
+            <button type="button" class="analysis-mode-btn" data-analysis-mode="fast"><b>Rápido</b><small>Live</small></button>
+            <button type="button" class="analysis-mode-btn active" data-analysis-mode="deep"><b>Profundo</b><small>Completo</small></button>
+          </div>
           <label class="btn primary drawer-file-btn">Seleccionar PDF
             <input id="newPdfInput" type="file" accept="application/pdf">
           </label>
@@ -116,6 +121,11 @@
             <p>Admite distintas estructuras de reporte. El sistema identifica sus secciones antes de interpretar los datos.</p>
           </div>
           <label class="btn primary file-btn">Seleccionar PDF<input id="pdfInput" type="file" accept="application/pdf"></label>
+          <div class="analysis-mode-picker" aria-label="Profundidad del análisis">
+            <span>Modo de análisis</span>
+            <button type="button" class="analysis-mode-btn" data-analysis-mode="fast"><b>Rápido</b><small>Live · resultado inmediato</small></button>
+            <button type="button" class="analysis-mode-btn active" data-analysis-mode="deep"><b>Profundo</b><small>Historial + evolución + Qwen</small></button>
+          </div>
           <div id="dropZone" class="drop-zone">Arrastra el reporte aquí</div>
           <div id="uploadState" class="upload-state hidden"><div class="spinner"></div><div class="upload-state-copy"><div class="upload-state-head"><b id="uploadTitle">Procesando…</b><strong id="uploadReadPct">0%</strong></div><small id="uploadDetail">Leyendo el documento</small><div class="read-progress-track"><i id="uploadReadBar"></i></div></div></div>
         </section>
@@ -276,6 +286,13 @@
                   <div id="metricsGrid" class="metrics-grid"></div>
                 </section>
 
+                <section class="pane-block deep-analysis-block">
+                  <div class="block-heading"><span>Lectura profunda</span><span id="deepAnalysisBadge" class="quiet-badge">Profundo</span></div>
+                  <div id="deepSummaryGrid" class="deep-summary-grid"></div>
+                  <div id="deepSignals" class="deep-signals"></div>
+                  <div id="deepHistoryRecent" class="deep-history-recent"></div>
+                </section>
+
                 <section class="pane-block sentinel-chart-block">
                   <div class="block-heading"><span>Evolución de Nota</span></div>
                   <div class="chart-wrap sentinel-chart"><svg id="noteEvolutionChart" viewBox="0 0 760 260" preserveAspectRatio="none"></svg></div>
@@ -332,12 +349,12 @@
         <div class="page-head"><div><span class="eyebrow">CONFIGURACIÓN</span><h2>Motor de análisis</h2></div></div>
         <div class="settings-grid">
           <article class="settings-card"><h3>Privacidad</h3><div class="setting-row"><span>Acceso por contraseña</span><b class="ok">Activo</b></div><div class="setting-row"><span>Sesión</span><b class="ok">Protegida</b></div><div class="setting-row"><span>Indexación pública</span><b>No</b></div></article>
-          <article class="settings-card"><h3>Motor local</h3><div class="setting-row"><span>Extracción</span><b class="ok">Parser + OCR local</b></div><div class="setting-row"><span>IA</span><b>Interpretación, plan y seguimiento</b></div><div class="setting-row"><span>Modo</span><b class="ok">Rápido · Qwen 0.5B prioritario</b></div><div class="setting-row"><span>Modelo activo</span><b id="aiModelActive">Qwen · detectando…</b></div><div class="setting-row"><span>Ejecución</span><b>WebGPU preferido · CPU/WASM respaldo</b></div><div class="setting-row"><span>Hardware</span><b id="aiHardware">Comprobando…</b></div><div class="setting-row"><span>Autoprueba Qwen</span><b id="aiSelfTest">Pendiente</b></div><div class="setting-row"><span>Costo por consulta</span><b class="ok">Sin facturación por tokens</b></div><div class="setting-row"><span>Estado</span><b id="aiStatus">Comprobando…</b></div><button id="retryLocalAi" class="mini-btn" type="button">Reintentar Qwen</button></article>
+          <article class="settings-card"><h3>Motor local</h3><div class="setting-row"><span>Extracción</span><b class="ok">Parser + OCR local</b></div><div class="setting-row"><span>IA</span><b>Interpretación, plan y seguimiento</b></div><div class="setting-row"><span>Modos</span><b class="ok">Rápido + Profundo local</b></div><div class="setting-row"><span>Modelo activo</span><b id="aiModelActive">Qwen · detectando…</b></div><div class="setting-row"><span>Ejecución</span><b>WebGPU preferido · CPU/WASM respaldo</b></div><div class="setting-row"><span>Hardware</span><b id="aiHardware">Comprobando…</b></div><div class="setting-row"><span>Autoprueba Qwen</span><b id="aiSelfTest">Pendiente</b></div><div class="setting-row"><span>Costo por consulta</span><b class="ok">Sin facturación por tokens</b></div><div class="setting-row"><span>Estado</span><b id="aiStatus">Comprobando…</b></div><button id="retryLocalAi" class="mini-btn" type="button">Reintentar Qwen</button></article>
         </div>
       </section>
     </main>
   </div>
 
-  <script type="module" src="/admin/admin.js?v=20260914-qwencpu1"></script>
+  <script type="module" src="/admin/admin.js?v=20260914-deep1"></script>
 </body>
 </html>
