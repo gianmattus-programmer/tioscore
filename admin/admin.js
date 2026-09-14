@@ -444,6 +444,30 @@ function reportCapture(text,patterns){
  }
  return '';
 }
+function sanitizePersonName(value=''){
+ const raw=String(value||'').replace(/[|;,_]+/g,' ').replace(/\s+/g,' ').trim();
+ if(!raw||raw.length<2||raw.length>70||/\d/.test(raw))return '';
+ const stop=new Set(['comercial','financiera','financiero','reporte','consulta','score','puntaje','deuda','cliente','titular','persona','natural','juridica','jurídica','documento','sentinel','sistema','riesgo','credito','crédito','banco','entidad','empresa','informacion','información','actualizada','capacidad','pago','bancarizado','resumen','general']);
+ const words=raw.split(' ').filter(Boolean);
+ if(words.length<1||words.length>5)return '';
+ const generic=words.filter(w=>stop.has(w.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,''))).length;
+ if(generic>0)return '';
+ if(words.some(w=>w.length<2||!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'.-]+$/.test(w)))return '';
+ return words.map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(' ');
+}
+function extractPersonName(text=''){
+ const patterns=[
+  /(?:nombres?\s+y\s+apellidos?|nombre\s+completo)\s*[:\-]?\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i,
+  /(?:titular|nombre)\s*[:\-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i,
+  /(?:cliente)\s*[:\-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i
+ ];
+ for(const re of patterns){
+  const m=String(text).match(re);
+  const clean=sanitizePersonName(m?.[1]||'');
+  if(clean)return clean;
+ }
+ return '';
+}
 function reportMoneyNumber(value){
  const s=String(value||'').replace(/[^\d,.-]/g,'').trim();
  if(!s)return null;
@@ -588,9 +612,7 @@ function parseSentinelReport(source,meta={}){
  const text=String(source||'').replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
  const raw={};
  const add=(label,value)=>{if(value!==''&&value!=null&&!/^(?:no informado|no registrado)$/i.test(String(value).trim()))raw[label]=String(value).trim()};
- const name=reportCapture(text,[
-  /(?:nombres?\s*(?:y\s*apellidos?)?|titular|cliente)\s*[:\-]?\s*([A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ]+(?:\s+[A-ZÁÉÍÓÚÑ][A-ZÁÉÍÓÚÑa-záéíóúñ]+){0,4})/i
- ]);
+ const name=extractPersonName(text);
  const dni=reportCapture(text,[/\bDNI\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{8})\b/i,/\b(\d{8})\b(?=.{0,25}\bDNI\b)/i]);
  const ruc=reportCapture(text,[/\bRUC\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{11})\b/i]);
  const scoreRaw=reportCapture(text,[
@@ -735,20 +757,20 @@ let localAiPromise=null;
 let localAiWorker=null;
 let localAiQueue=Promise.resolve();
 let localAiHardware=null;
-const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.82';
+const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.85';
 const LOCAL_AI_CANDIDATES_F16=[
  'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
- 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
- 'Qwen3-1.7B-q4f16_1-MLC'
+ 'Qwen3-0.6B-q4f16_1-MLC',
+ 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC'
 ];
 const LOCAL_AI_CANDIDATES_F32=[
  'Qwen2.5-0.5B-Instruct-q4f32_1-MLC',
- 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC',
- 'Qwen3-1.7B-q4f32_1-MLC'
+ 'Qwen3-0.6B-q4f32_1-MLC',
+ 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC'
 ];
 let localAiModelId='';
 let localAiLastError='';
-const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-qwenstable1';
+const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-qwenreal1';
 
 function setLocalAiStatus(textValue,ok=false){
  const el=$('#aiStatus');
@@ -804,7 +826,7 @@ async function getLocalAiEngine(){
   localAiModelId=preferred.find(id=>ids.includes(id))||LOCAL_AI_CANDIDATES_F16.find(id=>ids.includes(id))||'';
   if(!localAiModelId){
    const availableQwen=ids.filter(id=>/qwen/i.test(id)).slice(0,8).join(', ');
-   throw new Error('No se encontró un Qwen compatible en WebLLM 0.2.82.'+(availableQwen?' Disponibles: '+availableQwen:''));
+   throw new Error('No se encontró un Qwen compatible en WebLLM 0.2.85.'+(availableQwen?' Disponibles: '+availableQwen:''));
   }
 
   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
@@ -1195,6 +1217,7 @@ function renderInterpretationEngine(x){
 }
 function loadQuickAnalysis(a,filename=''){
  state.analysis=normalize(a);const x=state.analysis;
+ const quickSafeName=sanitizePersonName(x.client?.name||'');if(x.client)x.client.name=quickSafeName||'Cliente';
  $('#uploadPanel').classList.add('hidden');$('#resultPanel').classList.remove('hidden');
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
  $('#analysisMeta').textContent='Vista rápida · completando análisis…';
@@ -1232,6 +1255,7 @@ function loadQuickAnalysis(a,filename=''){
 function loadAnalysis(a,isDemo=false,filename='',options={}){
  if(options.historyId)state.currentHistoryId=options.historyId;else if(!isDemo&&!options.keepHistoryId)state.currentHistoryId=null;
  state.analysis=normalize(a);const x=state.analysis;
+ const fullSafeName=sanitizePersonName(x.client?.name||'');if(x.client)x.client.name=fullSafeName||'Cliente';
  $('#uploadPanel').classList.add('hidden');$('#resultPanel').classList.remove('hidden');
  $('#reportTypeBadge').textContent=[x.sourceReport.provider||'Sentinel',x.sourceReport.type||'Reporte detectado'].filter(Boolean).join(' · ');
  $('#analysisMeta').textContent=(isDemo?'Demo':'Procesado')+' · '+dateNow();
