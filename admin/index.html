@@ -16,7 +16,7 @@
       <span class="eyebrow">MODO ADMIN PRIVADO</span>
       <h1>Configura el acceso privado</h1>
       <p>Faltan variables privadas del proyecto en Vercel.</p>
-      <div class="code-list"><code>ADMIN_PASSWORD</code><code>ADMIN_SESSION_SECRET</code><code>OPENAI_API_KEY</code></div>
+      <div class="code-list"><code>ADMIN_PASSWORD</code><code>ADMIN_SESSION_SECRET</code></div>
     </div>
   </div>
 
@@ -173,6 +173,18 @@
                   <div id="checklist" class="checklist"></div>
                 </section>
 
+                <section class="pane-block admin-only followup-block">
+                  <div class="block-heading"><span>Próxima asesoría</span><span id="followUpTiming" class="quiet-badge">Por definir</span></div>
+                  <div class="followup-card">
+                    <div class="followup-item"><small>Objetivo</small><p id="followUpObjective">Definir objetivos para la siguiente revisión.</p></div>
+                    <div class="followup-item"><small>Próxima revisión</small><p id="followUpReview">Comparar un reporte actualizado con la lectura actual.</p></div>
+                    <div class="followup-grid">
+                      <div><small>Puntos a verificar</small><ul id="followUpPoints"></ul></div>
+                      <div><small>Preguntas para la asesoría</small><ul id="followUpQuestions"></ul></div>
+                    </div>
+                  </div>
+                </section>
+
                 <section class="pane-block admin-only">
                   <div class="block-heading"><span>Acotación del asesor</span></div>
                   <textarea id="advisorNotes" placeholder="Notas privadas, acuerdos, observaciones para la siguiente revisión…"></textarea>
@@ -315,12 +327,12 @@
         <div class="page-head"><div><span class="eyebrow">CONFIGURACIÓN</span><h2>Motor de análisis</h2></div></div>
         <div class="settings-grid">
           <article class="settings-card"><h3>Privacidad</h3><div class="setting-row"><span>Acceso por contraseña</span><b class="ok">Activo</b></div><div class="setting-row"><span>Sesión</span><b class="ok">Protegida</b></div><div class="setting-row"><span>Indexación pública</span><b>No</b></div></article>
-          <article class="settings-card"><h3>Motor híbrido</h3><div class="setting-row"><span>Extracción principal</span><b class="ok">Parser local + OCR sin tokens</b></div><div class="setting-row"><span>IA</span><b>Interpretación + fallback</b></div><div class="setting-row"><span>Proveedor</span><b>OpenAI</b></div><div class="setting-row"><span>Estado</span><b id="aiStatus">Comprobando…</b></div></article>
+          <article class="settings-card"><h3>Motor local</h3><div class="setting-row"><span>Extracción</span><b class="ok">Parser + OCR local</b></div><div class="setting-row"><span>IA</span><b>Interpretación, plan y seguimiento</b></div><div class="setting-row"><span>Motor</span><b>WebLLM · en este navegador</b></div><div class="setting-row"><span>Costo por consulta</span><b class="ok">Sin facturación por tokens</b></div><div class="setting-row"><span>Estado</span><b id="aiStatus">Comprobando…</b></div></article>
         </div>
       </section>
     </main>
   </div>
 
-  <script type="module" src="/admin/admin.js?v=20260914-localcompat1"></script>
+  <script type="module" src="/admin/admin.js?v=20260914-localai1"></script>
 </body>
 </html>
