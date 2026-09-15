@@ -743,25 +743,62 @@ function extractHistoricalRatings(source=''){
  }
  return ratings;
 }
+function historicalNumberToken(value=''){
+ const s=String(value||'').replace(/[^\d,.-]/g,'');
+ if(!s)return null;
+ const n=Number(s.replace(/,/g,''));
+ return Number.isFinite(n)?n:null;
+}
+function parseHistoricalRowLine(line='',ratingByDate=new Map()){
+ const source=String(line||'').replace(/\s+/g,' ').trim();
+ const dm=source.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
+ if(!dm)return null;
+ const date=dm[1];
+ const tail=source.slice((dm.index||0)+dm[0].length);
+ const rawTokens=tail.match(/\b(?:NOR|CPP|DEF|DUD|PER|SCAL)\b|[-+]?\d[\d,]*(?:\.\d+)?/gi)||[];
+ const ratingToken=rawTokens.find(t=>/^(?:NOR|CPP|DEF|DUD|PER|SCAL)$/i.test(t));
+ const nums=rawTokens
+  .filter(t=>!/^(?:NOR|CPP|DEF|DUD|PER|SCAL)$/i.test(t))
+  .map(historicalNumberToken)
+  .filter(v=>v!=null);
+ if(nums.length<12)return null;
+ const signal=nums[0],entities=nums[1],totalDebt=nums[2],normalPct=nums[3];
+ if(signal<0||signal>10||entities<0||entities>99||totalDebt<0||normalPct<0||normalPct>100.5)return null;
+ const rating=String(ratingToken||ratingByDate.get(date)||'').toUpperCase();
+ return {
+  date,signal,entities,totalDebt,normalPct,rating,
+  overdueSbs:Math.max(0,nums[4]||0),
+  otherOverdue:Math.max(0,nums[5]||0),
+  unpaidDocs:Math.max(0,nums[6]||0),
+  taxDebt:Math.max(0,nums[7]||0),
+  laborDebt:Math.max(0,nums[8]||0),
+  countA:Math.max(0,nums[9]||0),
+  countB:Math.max(0,nums[10]||0),
+  countC:Math.max(0,nums[11]||0)
+ };
+}
 function parseSentinelHistory(text=''){
- const rows=[];
- const ratingByDate=extractHistoricalRatings(text);
- const re=/\b(\d{2}\/\d{2}\/\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)(?:\s+(NOR|CPP|DEF|DUD|PER|SCAL))?\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/g;
- const seen=new Set();
- let m;
- while((m=re.exec(String(text)))){
-  if(seen.has(m[1]))continue;
-  seen.add(m[1]);
-  const num=v=>Number(String(v).replace(/,/g,''))||0;
-  const rating=String(m[6]||ratingByDate.get(m[1])||'').toUpperCase();
-  rows.push({
-   date:m[1],signal:Number(m[2])||0,entities:Number(m[3])||0,totalDebt:num(m[4]),normalPct:Number(m[5])||0,
-   rating,
-   overdueSbs:num(m[7]),otherOverdue:num(m[8]),unpaidDocs:num(m[9]),taxDebt:num(m[10]),laborDebt:num(m[11]),
-   countA:Number(m[12])||0,countB:Number(m[13])||0,countC:Number(m[14])||0
-  });
+ const raw=String(text||'');
+ const ratingByDate=extractHistoricalRatings(raw);
+ const rows=[],seen=new Set();
+ for(const line of raw.split(/\r?\n/)){
+  const row=parseHistoricalRowLine(line,ratingByDate);
+  if(!row||seen.has(row.date))continue;
+  seen.add(row.date);rows.push(row);
  }
- return rows;
+ if(rows.length<3){
+  const dates=[...raw.matchAll(/\b\d{2}\/\d{2}\/\d{4}\b/g)];
+  for(let i=0;i<dates.length;i++){
+   const date=dates[i][0];
+   if(seen.has(date))continue;
+   const from=dates[i].index||0;
+   const to=i+1<dates.length?(dates[i+1].index||from+300):Math.min(raw.length,from+320);
+   const row=parseHistoricalRowLine(raw.slice(from,Math.min(to,from+320)),ratingByDate);
+   if(!row||seen.has(row.date))continue;
+   seen.add(row.date);rows.push(row);
+  }
+ }
+ return rows.sort((a,b)=>historyDateValue(b.date)-historyDateValue(a.date));
 }
 function parseSentinelUnpaidDocuments(text=''){
  const source=String(text);
@@ -1546,6 +1583,29 @@ async function parallelMapLimit(items,limit,worker){
  await Promise.all(runners);
 }
 
+function pdfItemsToLayoutText(items=[]){
+ const cells=[];
+ for(const item of items||[]){
+  const str=String(item?.str||'').replace(/\s+/g,' ').trim();
+  if(!str)continue;
+  const tr=Array.isArray(item?.transform)?item.transform:[];
+  cells.push({str,x:Number(tr[4])||0,y:Number(tr[5])||0});
+ }
+ if(!cells.length)return '';
+ cells.sort((a,b)=>Math.abs(b.y-a.y)>2?b.y-a.y:a.x-b.x);
+ const rows=[];
+ for(const cell of cells){
+  let row=rows.find(r=>Math.abs(r.y-cell.y)<=2.2);
+  if(!row){row={y:cell.y,cells:[]};rows.push(row)}
+  row.cells.push(cell);
+ }
+ rows.sort((a,b)=>b.y-a.y);
+ return rows.map(row=>{
+  row.cells.sort((a,b)=>a.x-b.x);
+  return row.cells.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
+ }).filter(Boolean).join('\n');
+}
+
 async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
@@ -1569,15 +1629,18 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
   updateProcessDetail('Página '+i+' de '+totalPages+' · detectando texto…');
   const page=await pdf.getPage(i);
   const content=await page.getTextContent();
-  const digitalText=content.items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
+  const flatText=content.items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
+  const layoutText=pdfItemsToLayoutText(content.items);
+  const digitalText=layoutText.length>=80?layoutText:flatText;
+  const detectText=(layoutText+'\n'+flatText).trim();
 
-  if(isDigitalTextUseful(digitalText,content.items)){
+  if(isDigitalTextUseful(flatText||digitalText,content.items)){
    digitalPages++;
-   pages[i-1]='--- PÁGINA '+i+' · TEXTO DIGITAL ---\n'+digitalText;
+   pages[i-1]='--- PÁGINA '+i+' · TEXTO DIGITAL CON LAYOUT ---\n'+digitalText;
    if(deepHistoryOCR){
-    const dates=(digitalText.match(/\b\d{2}\/\d{2}\/\d{4}\b/g)||[]).length;
-    const historicalHeader=/posici[oó]n hist[oó]rica|%\s*cali\.?\s*normal|peor\s+califi|superintendencia de banca y seguros/i.test(digitalText);
-    const historicalRows=dates>=5&&/(?:sema\.?|riesgo|deuda total|deuda vencida|califi)/i.test(digitalText);
+    const dates=(detectText.match(/\b\d{2}\/\d{2}\/\d{4}\b/g)||[]).length;
+    const historicalHeader=/posici[oó]n hist[oó]rica|%\s*cali\.?\s*normal|peor\s+califi|superintendencia de banca y seguros/i.test(detectText);
+    const historicalRows=dates>=5&&/(?:sema\.?|riesgo|deuda total|deuda vencida|califi)/i.test(detectText);
     if((historicalHeader||historicalRows)&&historyOcrJobs.length<5){
      historyOcrJobs.push({page,pageNumber:i,index:i-1});
     }
