@@ -724,8 +724,28 @@ function collapseHistoryMonthly(rows=[]){
  }
  return monthly;
 }
+function extractHistoricalRatings(source=''){
+ const ratings=new Map();
+ const raw=String(source||'');
+ const ocrParts=raw.split(/--- OCR HIST[ÓO]RICO P[ÁA]GINA \d+ ---/i).slice(1);
+ const targets=ocrParts.length?ocrParts:[raw];
+ for(const part of targets){
+  const dateRe=/\b(\d{2}\/\d{2}\/\d{4})\b/g;
+  const matches=[...part.matchAll(dateRe)];
+  for(let i=0;i<matches.length;i++){
+   const date=matches[i][1];
+   const from=(matches[i].index||0)+matches[i][0].length;
+   const to=i+1<matches.length?(matches[i+1].index||from+260):Math.min(part.length,from+320);
+   const segment=part.slice(from,Math.min(to,from+320));
+   const code=segment.match(/\b(NOR|CPP|DEF|DUD|PER|SCAL)\b/i)?.[1]?.toUpperCase()||'';
+   if(code&&!ratings.has(date))ratings.set(date,code);
+  }
+ }
+ return ratings;
+}
 function parseSentinelHistory(text=''){
  const rows=[];
+ const ratingByDate=extractHistoricalRatings(text);
  const re=/\b(\d{2}\/\d{2}\/\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)(?:\s+(NOR|CPP|DEF|DUD|PER|SCAL))?\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/g;
  const seen=new Set();
  let m;
@@ -796,9 +816,9 @@ function parseCreditLines(text=''){
  }
  return rows;
 }
-function buildSentinelDeepAnalysis(text='',analysisMode='deep'){
+function buildSentinelDeepAnalysis(text='',analysisMode='deep',rawSource=''){
  if(analysisMode!=='deep')return null;
- const history=parseSentinelHistory(text);
+ const history=parseSentinelHistory(rawSource||text);
  const unpaidGroup=parseSentinelUnpaidDocuments(text);
  const unpaid=parseSentinelUnpaidDocument(text);
  if(!history.length&&!unpaid)return {mode:'deep',observations:0,signals:[],recent:[]};
@@ -847,7 +867,7 @@ function parseCreditReport(source,meta={}){
  const profile=meta.profile||detectReportProfile(rawSource);
  const text=rawSource.replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
  const analysisMode=meta.analysisMode==='fast'?'fast':'deep';
- let deepAnalysis=profile.family==='sentinel'?buildSentinelDeepAnalysis(text,analysisMode):null;
+ let deepAnalysis=profile.family==='sentinel'?buildSentinelDeepAnalysis(text,analysisMode,rawSource):null;
  const historySample=deepAnalysis?sampleHistoricalRows(collapseHistoryMonthly(deepAnalysis.history||[]),24):[];
  const genericPairs=extractGenericPairs(rawSource);
  const raw={};
@@ -1423,7 +1443,7 @@ async function processPdf(file,{background=false}={}){
 
  let localShown=false;
  try{
-  const extracted=await extractPdfHybrid(file);
+  const extracted=await extractPdfHybrid(file,{deepHistoryOCR:analysisMode==='deep'});
   if(extracted.text.length<100)throw new Error('No se logró obtener suficiente contenido legible del reporte.');
 
   setReportReadProgress(96);
@@ -1437,6 +1457,7 @@ async function processPdf(file,{background=false}={}){
   local.sourceReport.extractionMode=extracted.visualPages>0?'Híbrida (texto + OCR local)':'Texto digital';
   local.sourceReport.totalPages=extracted.totalPages;
   local.sourceReport.visualPages=extracted.visualPages;
+  local.sourceReport.historyOcrPages=extracted.historyOcrPages||0;
   local.sourceReport.readProgress=100;
   setReportReadProgress(100);
   local.sourceReport.interpretationEngine='Reglas locales · respuesta inmediata';
@@ -1525,7 +1546,7 @@ async function parallelMapLimit(items,limit,worker){
  await Promise.all(runners);
 }
 
-async function extractPdfHybrid(file,{onQuickText}={}){
+async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
  const pdf=await pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())}).promise;
@@ -1533,7 +1554,8 @@ async function extractPdfHybrid(file,{onQuickText}={}){
  setReportReadProgress(5);
  const pages=Array(totalPages).fill('');
  const visualJobs=[];
- let digitalPages=0,visualPages=0,quickTriggered=false;
+ const historyOcrJobs=[];
+ let digitalPages=0,visualPages=0,historyOcrPages=0,quickTriggered=false;
 
  const maybeStartQuick=()=>{
   if(quickTriggered||typeof onQuickText!=='function')return;
@@ -1552,6 +1574,14 @@ async function extractPdfHybrid(file,{onQuickText}={}){
   if(isDigitalTextUseful(digitalText,content.items)){
    digitalPages++;
    pages[i-1]='--- PÁGINA '+i+' · TEXTO DIGITAL ---\n'+digitalText;
+   if(deepHistoryOCR){
+    const dates=(digitalText.match(/\b\d{2}\/\d{2}\/\d{4}\b/g)||[]).length;
+    const historicalHeader=/posici[oó]n hist[oó]rica|%\s*cali\.?\s*normal|peor\s+califi|superintendencia de banca y seguros/i.test(digitalText);
+    const historicalRows=dates>=5&&/(?:sema\.?|riesgo|deuda total|deuda vencida|califi)/i.test(digitalText);
+    if((historicalHeader||historicalRows)&&historyOcrJobs.length<5){
+     historyOcrJobs.push({page,pageNumber:i,index:i-1});
+    }
+   }
    maybeStartQuick();
   }else{
    visualPages++;
@@ -1576,7 +1606,22 @@ async function extractPdfHybrid(file,{onQuickText}={}){
    maybeStartQuick();
   });
  }else{
-  setReportReadProgress(92);
+  setReportReadProgress(historyOcrJobs.length?86:92);
+ }
+
+ if(historyOcrJobs.length){
+  historyOcrPages=historyOcrJobs.length;
+  updateProcessDetail('Lectura profunda · recuperando calificaciones históricas NOR / CPP / DEF / DUD / PER…');
+  await getOcrScheduler();
+  let histDone=0;
+  await parallelMapLimit(historyOcrJobs,2,async job=>{
+   const image=await renderPageForVision(job.page);
+   const visualText=await readPageWithOcr(image,job.pageNumber);
+   pages[job.index]+='\n--- OCR HISTÓRICO PÁGINA '+job.pageNumber+' ---\n'+visualText;
+   histDone++;
+   setReportReadProgress(86+(histDone/Math.max(historyOcrPages,1))*7);
+   updateProcessDetail('Historial financiero '+histDone+' de '+historyOcrPages+' · leyendo calificaciones…');
+  });
  }
 
  setReportReadProgress(94);
@@ -1586,7 +1631,7 @@ async function extractPdfHybrid(file,{onQuickText}={}){
   Promise.resolve(onQuickText(text.slice(0,90000))).catch(()=>{});
  }
 
- return {text,totalPages,digitalPages,visualPages};
+ return {text,totalPages,digitalPages,visualPages,historyOcrPages};
 }
 
 function isDigitalTextUseful(text,items){
@@ -2165,7 +2210,7 @@ function renderFiveYearMatrix(data){
    const row=lookup.get(year+'-'+month),rating=financeRating(row),cls=financeRatingClass(rating);
    const tip=row
     ?[months[month-1]+' '+year,'Fecha: '+row.date,'Calificación: '+(rating?rating+' · '+financeRatingLabel(rating):'sin código explícito'),'Deuda total: '+reportMoney(row.totalDebt||0),'Deuda vencida: '+reportMoney(row.overdueSbs||0),'Doc. impagos: '+reportMoney(row.unpaidDocs||0)].join(' · ')
-    :'Sin registro mensual en el PDF';
+    :'El PDF no contiene un registro para este mes';
    html+='<div class="matrix-cell" data-tip="'+esc(tip)+'"><span class="finance-status '+cls+'">'+esc(rating||'—')+'</span></div>';
   }
  }
@@ -2226,12 +2271,20 @@ function renderFiveYearTrend(data){
 }
 function renderFiveYearFinancial(x){
  const section=$('#financialFiveYearSection');if(!section)return;
+ const deepMode=x.sourceReport?.analysisMode==='deep';
  const history=Array.isArray(x.deepAnalysis?.history)?x.deepAnalysis.history:[];
  const data=fiveYearMonthlyHistory(history);
- const visible=data.years.length>0&&data.months.some(m=>m.row);
- toggleBlock('#financialFiveYearSection',visible);
- if(!visible)return;
- const kpis=fiveYearKpis(data),kbox=$('#fiveYearKpis');
+ const hasRows=data.years.length>0&&data.months.some(m=>m.row);
+ toggleBlock('#financialFiveYearSection',deepMode||hasRows);
+ if(!deepMode&&!hasRows)return;
+ const kbox=$('#fiveYearKpis'),matrix=$('#fiveYearMatrix'),svg=$('#fiveYearTrendChart');
+ if(!hasRows){
+  if(kbox)kbox.innerHTML='<div class="deep-mode-empty">No se recuperó una serie histórica estructurada de este PDF.</div>';
+  if(matrix)matrix.innerHTML='<div class="deep-mode-empty">El historial mensual no pudo estructurarse en esta lectura.</div>';
+  if(svg)svg.innerHTML='';
+  return;
+ }
+ const kpis=fiveYearKpis(data);
  if(kbox)kbox.innerHTML=kpis.map(k=>'<div class="five-year-kpi '+esc(k.className||'')+'"><small>'+esc(k.label)+'</small><b>'+esc(k.value)+'</b></div>').join('');
  renderFiveYearTrend(data);
  renderFiveYearMatrix(data);
@@ -2271,6 +2324,7 @@ function renderCoverage(x){
   ['Método de lectura',s.extractionMode],
   ['Páginas del reporte',s.totalPages],
   ['Páginas leídas visualmente',s.visualPages!=null?String(s.visualPages):''],
+  ['Páginas históricas reforzadas por OCR',s.historyOcrPages?String(s.historyOcrPages):''],
   ['Periodo cubierto',s.periodCovered],
   ['Secciones estructuradas',det?(det+(exp?' / '+exp:'')):''],
   ['Modo de análisis',s.analysisMode==='deep'?'Profundo':s.analysisMode==='fast'?'Rápido':''],
