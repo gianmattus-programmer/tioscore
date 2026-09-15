@@ -1640,8 +1640,9 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
    if(deepHistoryOCR){
     const dates=(detectText.match(/\b\d{2}\/\d{2}\/\d{4}\b/g)||[]).length;
     const historicalHeader=/posici[oó]n hist[oó]rica|%\s*cali\.?\s*normal|peor\s+califi|superintendencia de banca y seguros/i.test(detectText);
-    const historicalRows=dates>=5&&/(?:sema\.?|riesgo|deuda total|deuda vencida|califi)/i.test(detectText);
-    if((historicalHeader||historicalRows)&&historyOcrJobs.length<5){
+    const rowLike=(detectText.match(/\b\d{2}\/\d{2}\/\d{4}\s+\d+(?:\.\d+)?\s+\d+\s+[\d,]+\.\d{2}/g)||[]).length;
+    const historicalRows=dates>=3&&(rowLike>=3||/(?:sema\.?|riesgo|deuda total|deuda vencida|califi)/i.test(detectText));
+    if((historicalHeader||historicalRows)&&historyOcrJobs.length<8){
      historyOcrJobs.push({page,pageNumber:i,index:i-1});
     }
    }
@@ -2341,12 +2342,18 @@ function renderFiveYearFinancial(x){
  toggleBlock('#financialFiveYearSection',deepMode||hasRows);
  if(!deepMode&&!hasRows)return;
  const kbox=$('#fiveYearKpis'),matrix=$('#fiveYearMatrix'),svg=$('#fiveYearTrendChart');
+ const trendCard=svg?.closest('.financial-trend-card');
+ const matrixCard=matrix?.closest('.financial-matrix-card');
  if(!hasRows){
-  if(kbox)kbox.innerHTML='<div class="deep-mode-empty">No se recuperó una serie histórica estructurada de este PDF.</div>';
-  if(matrix)matrix.innerHTML='<div class="deep-mode-empty">El historial mensual no pudo estructurarse en esta lectura.</div>';
+  if(kbox)kbox.innerHTML='<div class="deep-mode-empty five-year-empty">No se encontró una serie histórica utilizable en esta lectura. Si el PDF sí contiene Posición Histórica, vuelve a analizarlo en modo Profundo para reforzar esas páginas con OCR.</div>';
+  if(matrix)matrix.innerHTML='';
   if(svg)svg.innerHTML='';
+  if(trendCard)trendCard.classList.add('hidden');
+  if(matrixCard)matrixCard.classList.add('hidden');
   return;
  }
+ if(trendCard)trendCard.classList.remove('hidden');
+ if(matrixCard)matrixCard.classList.remove('hidden');
  const kpis=fiveYearKpis(data);
  if(kbox)kbox.innerHTML=kpis.map(k=>'<div class="five-year-kpi '+esc(k.className||'')+'"><small>'+esc(k.label)+'</small><b>'+esc(k.value)+'</b></div>').join('');
  renderFiveYearTrend(data);
