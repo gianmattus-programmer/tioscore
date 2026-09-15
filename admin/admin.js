@@ -1005,6 +1005,11 @@ function interpretationPayload(a){
  ];
  const datos={};
  for(const k of keep)if(raw[k]!=null&&String(raw[k]).trim()!=='')datos[k]=raw[k];
+ for(const [k,v] of Object.entries(raw)){
+  if(Object.keys(datos).length>=20)break;
+  if(datos[k]!=null||/^(?:Nombre|Documento|Tipo de documento|Últimos dígitos)/i.test(k))continue;
+  if(v!=null&&String(v).trim()!=='')datos[k]=v;
+ }
  const deep=a.deepAnalysis&&a.sourceReport?.analysisMode==='deep'?{
   observaciones:a.deepAnalysis.observations,
   deudaActual:a.deepAnalysis.currentFinancialDebt,
@@ -1025,6 +1030,8 @@ function interpretationPayload(a){
   nivel:getScoreBand(a.score).category,
   confianza:a.confidence,
   modo:a.sourceReport?.analysisMode||'fast',
+  fuente:a.sourceReport?.provider||'Reporte crediticio',
+  plantilla:a.sourceReport?.template||'Estructura adaptable',
   datos,
   entidades:(a.entities||[]).slice(0,8).map(x=>({n:x.name,p:x.product,s:x.balance,e:x.status||x.classification})),
   obligaciones:(a.obligations||[]).slice(0,10).map(x=>({e:x.entity,p:x.product,s:x.balance,st:x.status,d:x.detail})),
@@ -1974,7 +1981,7 @@ function renderReportCharts(x){
  renderCurrentVsOverdue(use('currentVsOverdue'));
  renderPieChart('#institutionShareChart',use('institutionShare'),['#5f93ba','#65c856','#f3d94f','#efa04b','#9a55dc','#64d2dc']);
 }
-function renderCoverage(x){const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;$('#coverageBox').innerHTML='<div class="coverage-item"><span>Fuente detectada</span><b>'+esc(s.provider||'No identificada')+'</b></div><div class="coverage-item"><span>Tipo de reporte</span><b>'+esc(s.type||'No identificado')+'</b></div><div class="coverage-item"><span>Método de lectura</span><b>'+esc(s.extractionMode||'Texto digital')+'</b></div><div class="coverage-item"><span>Páginas del reporte</span><b>'+esc(s.totalPages||'No informado')+'</b></div><div class="coverage-item"><span>Páginas leídas visualmente</span><b>'+esc(s.visualPages||0)+'</b></div><div class="coverage-item"><span>Periodo cubierto</span><b>'+esc(s.periodCovered||'No informado')+'</b></div><div class="coverage-item"><span>Secciones estructuradas</span><b>'+det+(exp?' / '+exp:'')+'</b></div><div class="coverage-item"><span>Modo de análisis</span><b>'+esc(s.analysisMode==='deep'?'Profundo':'Rápido')+'</b></div><div class="coverage-item"><span>Confianza de extracción</span><b>'+esc(x.confidence||0)+'%</b></div>'}
+function renderCoverage(x){const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;$('#coverageBox').innerHTML='<div class="coverage-item"><span>Fuente detectada</span><b>'+esc(s.provider||'No identificada')+'</b></div><div class="coverage-item"><span>Tipo de reporte</span><b>'+esc(s.type||'No identificado')+'</b></div><div class="coverage-item"><span>Estructura detectada</span><b>'+esc(s.template||'Adaptable')+'</b></div><div class="coverage-item"><span>Método de lectura</span><b>'+esc(s.extractionMode||'Texto digital')+'</b></div><div class="coverage-item"><span>Páginas del reporte</span><b>'+esc(s.totalPages||'No informado')+'</b></div><div class="coverage-item"><span>Páginas leídas visualmente</span><b>'+esc(s.visualPages||0)+'</b></div><div class="coverage-item"><span>Periodo cubierto</span><b>'+esc(s.periodCovered||'No informado')+'</b></div><div class="coverage-item"><span>Secciones estructuradas</span><b>'+det+(exp?' / '+exp:'')+'</b></div><div class="coverage-item"><span>Modo de análisis</span><b>'+esc(s.analysisMode==='deep'?'Profundo':'Rápido')+'</b></div><div class="coverage-item"><span>Confianza de extracción</span><b>'+esc(x.confidence||0)+'%</b></div>'}
 
 $('#copyActionsBtn')?.addEventListener('click',async()=>{if(!state.analysis)return;const t=state.analysis.recommendations.map((r,i)=>(i+1)+'. '+r.title+'\n'+r.text).join('\n\n');await navigator.clipboard.writeText(t);$('#copyActionsBtn').textContent='Copiado';setTimeout(()=>$('#copyActionsBtn').textContent='Copiar',1200)});
 $$('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{await navigator.clipboard.writeText($(b.dataset.copy)?.innerText||'');b.textContent='Copiado';setTimeout(()=>b.textContent='Copiar',1000)}));
