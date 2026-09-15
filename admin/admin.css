@@ -1117,3 +1117,8 @@ html,body{max-width:100%;overflow-x:hidden}
  .financial-trend-wrap{height:205px}
  .five-year-matrix{grid-template-columns:40px repeat(5,54px)}
 }
+
+
+/* Historial financiero: fallback compacto y de ancho completo */
+.five-year-kpis>.five-year-empty{grid-column:1/-1;width:100%;box-sizing:border-box}
+.five-year-matrix>.deep-mode-empty{grid-column:1/-1;width:100%;box-sizing:border-box}
