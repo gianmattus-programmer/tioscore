@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#fbfaf7">
   <title>Tío Score · Análisis privado</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp">
-  <link rel="stylesheet" href="/admin/admin.css?v=20260915-columns1">
+  <link rel="stylesheet" href="/admin/admin.css?v=20260915-financial5y1">
 </head>
 <body>
   <div id="configGate" class="gate hidden">
@@ -248,6 +248,37 @@
                   <div id="deepHistoryRecent" class="deep-history-recent"></div>
                 </section>
 
+                <section id="financialFiveYearSection" class="pane-block five-year-financial-block">
+                  <div class="block-heading"><span>Historial financiero · 5 años</span><span class="quiet-badge">ENE–DIC</span></div>
+                  <p class="five-year-intro">Evolución mensual del reporte. Cada mes toma el último registro disponible de ese periodo.</p>
+                  <div id="fiveYearKpis" class="five-year-kpis"></div>
+
+                  <div class="financial-trend-card">
+                    <div class="financial-trend-head">
+                      <div><b>Evolución monetaria</b><small>Pasa el mouse por los puntos para ver fecha, concepto y monto.</small></div>
+                      <div class="financial-trend-legend">
+                        <span><i class="trend-debt"></i>Deuda total</span>
+                        <span><i class="trend-overdue"></i>Deuda vencida</span>
+                        <span><i class="trend-docs"></i>Doc. impagos</span>
+                      </div>
+                    </div>
+                    <div class="financial-trend-wrap">
+                      <svg id="fiveYearTrendChart" viewBox="0 0 960 300" preserveAspectRatio="none" aria-label="Evolución financiera de los últimos cinco años"></svg>
+                      <div id="fiveYearTrendTooltip" class="financial-trend-tooltip hidden"></div>
+                    </div>
+                  </div>
+
+                  <div class="financial-matrix-card">
+                    <div class="matrix-heading">
+                      <div><b>Deudas financieras</b><small>Clasificación mensual SBS/Microfinanzas</small></div>
+                      <div class="matrix-legend">
+                        <span class="matrix-code nor">NOR</span><span class="matrix-code cpp">CPP</span><span class="matrix-code def">DEF</span><span class="matrix-code dud">DUD</span><span class="matrix-code per">PER</span>
+                      </div>
+                    </div>
+                    <div id="fiveYearMatrix" class="five-year-matrix"></div>
+                  </div>
+                </section>
+
                 <section id="noteEvolutionSection" class="pane-block sentinel-chart-block">
                   <div class="block-heading"><span>Evolución de Nota</span></div>
                   <div class="chart-wrap sentinel-chart"><svg id="noteEvolutionChart" viewBox="0 0 760 260" preserveAspectRatio="none"></svg></div>
@@ -359,6 +390,6 @@
     </main>
   </div>
 
-  <script type="module" src="/admin/admin.js?v=20260915-columns1"></script>
+  <script type="module" src="/admin/admin.js?v=20260915-financial5y1"></script>
 </body>
 </html>
