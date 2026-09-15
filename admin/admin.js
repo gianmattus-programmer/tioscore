@@ -1050,7 +1050,7 @@ function parseCreditReport(source,meta={}){
   client:{name:firstName(name||'Cliente'),document:protectedDocument(dni||ruc||ce)||'Documento protegido',age:'',reportDate:updated||creation||'',entities:institutions.join(' · ')},
   score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,deepAnalysis,creditLines,
   metrics,debtSeries,debtComposition,monthlyBehavior,entities,obligations,inquiries:[],raw,reportSections,
-  reportCharts:{noteEvolution,classificationHistory:[],overdueByType,overdueShare,currentVsOverdue,institutionShare:[]}
+  reportCharts:{noteEvolution,classificationHistory:historySample.filter(r=>r.rating).map(r=>({label:sentinelDateLabel(r.date),NOR:r.rating==='NOR'?100:0,CPP:r.rating==='CPP'?100:0,DEF:r.rating==='DEF'?100:0,DUD:r.rating==='DUD'?100:0,PER:r.rating==='PER'?100:0,SCAL:r.rating==='SCAL'?100:0})),overdueByType,overdueShare,currentVsOverdue,institutionShare:[]}
  };
  Object.assign(analysis,buildRuleInterpretation(analysis));
  analysis.sourceReport.interpretationEngine='Reglas locales';
@@ -1087,7 +1087,7 @@ function interpretationPayload(a){
   picoVencido:a.deepAnalysis.peakOverdue,
   reduccionDesdePico:a.deepAnalysis.debtReductionFromPeak,
   periodosRojos:a.deepAnalysis.redPeriods,
-  recientes:(a.deepAnalysis.recent||[]).slice(0,6).map(r=>({f:r.date,d:r.totalDebt,v:r.overdueSbs,doc:r.unpaidDocs,s:r.signal,n:r.normalPct}))
+  recientes:(a.deepAnalysis.recent||[]).slice(0,6).map(r=>({f:r.date,d:r.totalDebt,v:r.overdueSbs,doc:r.unpaidDocs,s:r.signal,n:r.normalPct,c:r.rating||''}))
  }:null;
  return {
   score:a.score,
@@ -2087,7 +2087,158 @@ function fallbackCharts(x){
   institutionShare:comp
  };
 }
+
+function historyDateValue(date=''){
+ const p=String(date).split('/').map(Number);
+ if(p.length!==3||!p[0]||!p[1]||!p[2])return 0;
+ return p[2]*10000+p[1]*100+p[0];
+}
+function fiveYearMonthlyHistory(history=[]){
+ const valid=(history||[]).filter(r=>historyDateValue(r.date)>0);
+ if(!valid.length)return {years:[],months:[],latest:null};
+ const maxYear=Math.max(...valid.map(r=>Number(String(r.date).split('/')[2])||0));
+ const years=Array.from({length:5},(_,i)=>maxYear-4+i);
+ const allowed=new Set(years);
+ const byMonth=new Map();
+ for(const row of valid){
+  const [d,m,y]=String(row.date).split('/').map(Number);
+  if(!allowed.has(y))continue;
+  const key=y+'-'+String(m).padStart(2,'0');
+  const prev=byMonth.get(key);
+  if(!prev||historyDateValue(row.date)>historyDateValue(prev.date))byMonth.set(key,row);
+ }
+ const months=[];
+ for(const year of years){
+  for(let month=1;month<=12;month++){
+   const key=year+'-'+String(month).padStart(2,'0');
+   months.push({year,month,row:byMonth.get(key)||null});
+  }
+ }
+ const available=months.filter(x=>x.row);
+ const latest=available.length?available[available.length-1].row:null;
+ return {years,months,latest};
+}
+function financeRating(row){
+ const r=String(row?.rating||'').toUpperCase();
+ return ['NOR','CPP','DEF','DUD','PER','SCAL'].includes(r)?r:'';
+}
+function financeRatingClass(rating){
+ const r=String(rating||'').toLowerCase();
+ return ['nor','cpp','def','dud','per','scal'].includes(r)?r:'none';
+}
+function financeRatingLabel(rating){
+ return ({NOR:'Normal',CPP:'Con problemas potenciales',DEF:'Deficiente',DUD:'Dudoso',PER:'Pérdida',SCAL:'Sin calificación'})[rating]||'Sin clasificación';
+}
+function compactMoney(value){
+ const n=Number(value)||0;
+ if(Math.abs(n)>=1000000)return 'S/ '+(n/1000000).toFixed(1)+'M';
+ if(Math.abs(n)>=1000)return 'S/ '+(n/1000).toFixed(n>=10000?0:1)+'k';
+ return reportMoney(n)||'S/ 0';
+}
+function fiveYearKpis(data){
+ const rows=data.months.filter(x=>x.row).map(x=>x.row);
+ if(!rows.length)return [];
+ const latest=data.latest||rows.at(-1);
+ const ranked={NOR:1,CPP:2,DEF:3,DUD:4,PER:5,SCAL:0};
+ const worst=rows.reduce((best,r)=>(ranked[financeRating(r)]||0)>(ranked[financeRating(best)]||0)?r:best,rows[0]);
+ const peak=rows.reduce((best,r)=>(Number(r.totalDebt)||0)>(Number(best.totalDebt)||0)?r:best,rows[0]);
+ let streak=0,bestStreak=0;
+ for(const m of data.months){
+  if(financeRating(m.row)==='NOR'){streak++;bestStreak=Math.max(bestStreak,streak)}else streak=0;
+ }
+ return [
+  {label:'Estado actual',value:financeRating(latest)||'—',className:financeRating(latest)==='NOR'?'good':financeRating(latest)?'warn':''},
+  {label:'Peor calificación 5 años',value:financeRating(worst)?financeRating(worst)+' · '+worst.date:'—',className:/^(DEF|DUD|PER)$/.test(financeRating(worst))?'bad':'warn'},
+  {label:'Pico de deuda',value:(Number(peak.totalDebt)||0)>0?compactMoney(peak.totalDebt)+' · '+peak.date:'—',className:'warn'},
+  {label:'Mejor racha NOR',value:bestStreak?bestStreak+' mes'+(bestStreak===1?'':'es'):'—',className:bestStreak>=6?'good':''}
+ ];
+}
+function renderFiveYearMatrix(data){
+ const box=$('#fiveYearMatrix');if(!box)return;
+ if(!data.years.length){box.innerHTML='';return}
+ const months=['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+ const lookup=new Map(data.months.map(x=>[x.year+'-'+x.month,x.row]));
+ let html='<div class="matrix-cell head"></div>'+data.years.map(y=>'<div class="matrix-cell head">'+y+'</div>').join('');
+ for(let month=1;month<=12;month++){
+  html+='<div class="matrix-cell month">'+months[month-1]+'</div>';
+  for(const year of data.years){
+   const row=lookup.get(year+'-'+month),rating=financeRating(row),cls=financeRatingClass(rating);
+   const tip=row
+    ?[months[month-1]+' '+year,'Fecha: '+row.date,'Calificación: '+(rating?rating+' · '+financeRatingLabel(rating):'sin código explícito'),'Deuda total: '+reportMoney(row.totalDebt||0),'Deuda vencida: '+reportMoney(row.overdueSbs||0),'Doc. impagos: '+reportMoney(row.unpaidDocs||0)].join(' · ')
+    :'Sin registro mensual en el PDF';
+   html+='<div class="matrix-cell" data-tip="'+esc(tip)+'"><span class="finance-status '+cls+'">'+esc(rating||'—')+'</span></div>';
+  }
+ }
+ box.innerHTML=html;
+}
+function renderFiveYearTrend(data){
+ const svg=$('#fiveYearTrendChart'),tooltip=$('#fiveYearTrendTooltip');if(!svg)return;
+ const months=data.months.filter(x=>x.row);
+ if(months.length<2){svg.innerHTML='';return}
+ const w=960,h=300,pL=54,pR=18,pT=18,pB=38,plotW=w-pL-pR,plotH=h-pT-pB;
+ const values=months.flatMap(x=>[Number(x.row.totalDebt)||0,Number(x.row.overdueSbs)||0,Number(x.row.unpaidDocs)||0]);
+ const max=Math.max(1,...values);
+ const xFor=(year,month)=>{
+  const index=(year-data.years[0])*12+(month-1);
+  return pL+(index/59)*plotW;
+ };
+ const yFor=v=>pT+plotH-(Math.max(0,Number(v)||0)/max)*plotH;
+ let grid='';
+ for(let i=0;i<=4;i++){
+  const y=pT+i*plotH/4,val=max*(1-i/4);
+  grid+='<line class="five-year-grid" x1="'+pL+'" x2="'+(w-pR)+'" y1="'+y+'" y2="'+y+'"/>';
+  grid+='<text class="five-year-year-label" x="'+(pL-8)+'" y="'+(y+5)+'" text-anchor="end">'+esc(compactMoney(val).replace('S/ ',''))+'</text>';
+ }
+ grid+='<line class="five-year-axis" x1="'+pL+'" x2="'+(w-pR)+'" y1="'+(h-pB)+'" y2="'+(h-pB)+'"/>';
+ for(const year of data.years){
+  const x=xFor(year,6.5);
+  grid+='<text class="five-year-year-label" x="'+x+'" y="'+(h-10)+'" text-anchor="middle">'+year+'</text>';
+ }
+ const series=[
+  {key:'totalDebt',name:'Deuda total',cls:'debt'},
+  {key:'overdueSbs',name:'Deuda vencida',cls:'overdue'},
+  {key:'unpaidDocs',name:'Doc. impagos',cls:'docs'}
+ ];
+ let paths='',points='';
+ for(const s of series){
+  const pts=months.map(m=>({x:xFor(m.year,m.month),y:yFor(m.row[s.key]),m,value:Number(m.row[s.key])||0}));
+  const positive=pts.filter(q=>q.value>0||s.key==='totalDebt');
+  if(positive.length>1)paths+='<path class="five-year-line '+s.cls+'" d="'+positive.map((q,i)=>(i?'L':'M')+q.x+' '+q.y).join(' ')+'"/>';
+  for(const q of positive){
+   const rating=financeRating(q.m.row);
+   const tip=[s.name,q.m.row.date,reportMoney(q.value),rating?rating+' · '+financeRatingLabel(rating):''].filter(Boolean).join(' · ');
+   points+='<circle class="five-year-point '+s.cls+'" cx="'+q.x+'" cy="'+q.y+'" r="4" data-tip="'+esc(tip)+'" data-x="'+q.x+'" data-y="'+q.y+'"/>';
+   points+='<circle class="five-year-hit" cx="'+q.x+'" cy="'+q.y+'" r="11" data-tip="'+esc(tip)+'" data-x="'+q.x+'" data-y="'+q.y+'"/>';
+  }
+ }
+ svg.innerHTML=grid+paths+points;
+ const showTip=e=>{
+  if(!tooltip)return;
+  const el=e.currentTarget,rect=svg.getBoundingClientRect();
+  const x=(Number(el.dataset.x)||0)/w*rect.width;
+  const y=(Number(el.dataset.y)||0)/h*rect.height;
+  const parts=String(el.dataset.tip||'').split(' · ');
+  tooltip.innerHTML='<b>'+esc(parts[0]||'Dato financiero')+'</b><small>'+esc(parts[1]||'')+'</small><strong>'+esc(parts[2]||'')+'</strong>'+(parts.slice(3).length?'<small>'+esc(parts.slice(3).join(' · '))+'</small>':'');
+  tooltip.style.left=x+'px';tooltip.style.top=y+'px';tooltip.classList.remove('hidden');
+ };
+ const hideTip=()=>tooltip?.classList.add('hidden');
+ svg.querySelectorAll('[data-tip]').forEach(el=>{el.addEventListener('mouseenter',showTip);el.addEventListener('mouseleave',hideTip)});
+}
+function renderFiveYearFinancial(x){
+ const section=$('#financialFiveYearSection');if(!section)return;
+ const history=Array.isArray(x.deepAnalysis?.history)?x.deepAnalysis.history:[];
+ const data=fiveYearMonthlyHistory(history);
+ const visible=data.years.length>0&&data.months.some(m=>m.row);
+ toggleBlock('#financialFiveYearSection',visible);
+ if(!visible)return;
+ const kpis=fiveYearKpis(data),kbox=$('#fiveYearKpis');
+ if(kbox)kbox.innerHTML=kpis.map(k=>'<div class="five-year-kpi '+esc(k.className||'')+'"><small>'+esc(k.label)+'</small><b>'+esc(k.value)+'</b></div>').join('');
+ renderFiveYearTrend(data);
+ renderFiveYearMatrix(data);
+}
+
 function renderReportCharts(x){
+ renderFiveYearFinancial(x);
  const rc=x.reportCharts||{},fb=fallbackCharts(x);
  const use=(k)=>Array.isArray(rc[k])&&rc[k].length?rc[k]:(Array.isArray(fb[k])?fb[k]:[]);
  const note=use('noteEvolution');
