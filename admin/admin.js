@@ -1260,14 +1260,18 @@ const cpuQwenPending=new Map();
 
 const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.85';
 const LOCAL_AI_CANDIDATES_F16=[
- 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
- 'Qwen3-0.6B-q4f16_1-MLC',
- 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC'
+ 'Qwen2.5-3B-Instruct-q4f16_1-MLC',
+ 'Qwen3.5-2B-q4f16_1-MLC',
+ 'Qwen3-1.7B-q4f16_1-MLC',
+ 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
+ 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC'
 ];
 const LOCAL_AI_CANDIDATES_F32=[
- 'Qwen2.5-0.5B-Instruct-q4f32_1-MLC',
- 'Qwen3-0.6B-q4f32_1-MLC',
- 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC'
+ 'Qwen2.5-3B-Instruct-q4f32_1-MLC',
+ 'Qwen3.5-2B-q4f32_1-MLC',
+ 'Qwen3-1.7B-q4f32_1-MLC',
+ 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC',
+ 'Qwen2.5-0.5B-Instruct-q4f32_1-MLC'
 ];
 const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-qwenreal1';
 const CPU_QWEN_WORKER='/admin/qwen-cpu-worker.js?v=20260914-qwencpu1';
@@ -1362,47 +1366,56 @@ function cpuQwenRequest(type,payload={},timeoutMs=600000){
  });
 }
 async function initWebGpuQwen(hw){
- setLocalAiStatus('Cargando Qwen 0.5B por WebGPU…');
+ setLocalAiStatus('Preparando Qwen de alta precisión por WebGPU…');
  const webllm=await import(LOCAL_AI_MODULE);
  const ids=(webllm.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id).filter(Boolean);
- const preferred=hw.shaderF16?LOCAL_AI_CANDIDATES_F16:LOCAL_AI_CANDIDATES_F32;
- localAiModelId=preferred.find(id=>ids.includes(id))||'';
- if(!localAiModelId){
-  const availableQwen=ids.filter(id=>/qwen/i.test(id)).slice(0,8).join(', ');
-  throw new Error('Qwen 0.5B no aparece en el catálogo WebLLM 0.2.85.'+(availableQwen?' Qwen disponibles: '+availableQwen:''));
+ const preferred=(hw.shaderF16?LOCAL_AI_CANDIDATES_F16:LOCAL_AI_CANDIDATES_F32).filter(id=>ids.includes(id));
+ if(!preferred.length)throw new Error('No se encontró un modelo Qwen compatible en WebLLM.');
+ let lastError='';
+ for(let index=0;index<preferred.length;index++){
+  const modelId=preferred[index];
+  try{
+   localAiModelId=modelId;
+   setLocalAiStatus('Cargando '+modelId.replace('-q4f16_1-MLC','').replace('-q4f32_1-MLC','')+'…');
+   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
+   localAiWorker=new Worker(LOCAL_AI_WORKER,{type:'module',name:'tioscore-local-ai'});
+   const engine=await webllm.CreateWebWorkerMLCEngine(
+    localAiWorker,
+    modelId,
+    {
+     initProgressCallback:p=>{
+      const msg=localAiProgressText(p);
+      setLocalAiStatus(msg);
+      setInlineAiMessage(msg,'info');
+     },
+     logLevel:'WARN'
+    },
+    {context_window_size:4096}
+   );
+   setLocalAiStatus('Verificando '+modelId+'…');
+   const test=await Promise.race([
+    engine.chat.completions.create({messages:[{role:'user',content:'Responde solo: OK'}],temperature:0,max_tokens:5}),
+    new Promise((_,reject)=>setTimeout(()=>reject(new Error('La autoprueba superó 90 segundos.')),90000))
+   ]);
+   const probe=String(test?.choices?.[0]?.message?.content||'').trim();
+   if(!probe)throw new Error('El modelo cargó, pero no produjo texto.');
+   localAiBackend='webgpu';
+   localAiEngine=engine;
+   localAiGpuError='';
+   localAiLastError='';
+   setLocalAiStatus('Qwen verificado · '+modelId,true);
+   setInlineAiMessage('Qwen de alta precisión funcionando por WebGPU.','ok');
+   const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · WebGPU · '+probe.slice(0,20);testEl.className='ok'}
+   const modelEl=$('#aiModelActive');if(modelEl)modelEl.textContent=modelId;
+   return engine;
+  }catch(e){
+   lastError=String(e?.message||e||'fallo al cargar modelo');
+   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
+   localAiWorker=null;localAiEngine=null;
+   if(index<preferred.length-1)setInlineAiMessage('El modelo '+modelId+' no pudo iniciar; probando una versión más ligera…','info');
+  }
  }
-
- if(localAiWorker){try{localAiWorker.terminate()}catch{}}
- localAiWorker=new Worker(LOCAL_AI_WORKER,{type:'module',name:'tioscore-local-ai'});
- const engine=await webllm.CreateWebWorkerMLCEngine(
-  localAiWorker,
-  localAiModelId,
-  {
-   initProgressCallback:p=>{
-    const msg=localAiProgressText(p);
-    setLocalAiStatus(msg);
-    setInlineAiMessage(msg,'info');
-   },
-   logLevel:'WARN'
-  },
-  {context_window_size:4096}
- );
- setLocalAiStatus('Verificando Qwen WebGPU…');
- const test=await Promise.race([
-  engine.chat.completions.create({messages:[{role:'user',content:'Responde solo: OK'}],temperature:0,max_tokens:5}),
-  new Promise((_,reject)=>setTimeout(()=>reject(new Error('La autoprueba WebGPU superó 60 segundos.')),60000))
- ]);
- const probe=String(test?.choices?.[0]?.message?.content||'').trim();
- if(!probe)throw new Error('Qwen WebGPU cargó, pero no produjo texto.');
- localAiBackend='webgpu';
- localAiEngine=engine;
- localAiGpuError='';
- localAiLastError='';
- setLocalAiStatus('Qwen WebGPU verificado · '+localAiModelId,true);
- setInlineAiMessage('Qwen funcionando por WebGPU.','ok');
- const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · WebGPU · '+probe.slice(0,20);testEl.className='ok'}
- const modelEl=$('#aiModelActive');if(modelEl)modelEl.textContent=localAiModelId;
- return engine;
+ throw new Error('Ningún Qwen WebGPU pudo iniciar. Último error: '+lastError);
 }
 async function initCpuQwen(reason=''){
  if(reason)setInlineAiMessage('WebGPU no disponible: '+reason+' · iniciando Qwen por CPU/WASM.','info');
@@ -1529,7 +1542,7 @@ async function runLocalInterpretation(analysis){
  const format='Responde usando exactamente estas seis etiquetas, cada una iniciando una línea: SCORE:, RESUMEN:, PRIORIDAD:, CIERRE:, SEGUIMIENTO:, PREGUNTA:. No uses JSON, llaves, listas ni bloques de código.';
  const user=format+' '+focus+' Sé breve, concreto y útil para una asesoría. DATOS: '+payload;
  const messages=[{role:'system',content:system},{role:'user',content:user}];
- const maxOut=deep?320:220;
+ const maxOut=deep?440:220;
  let text='';
  if(localAiBackend==='cpu'){
   const out=await cpuQwenRequest('generate',{messages,maxNewTokens:maxOut},deep?420000:300000);
@@ -1580,6 +1593,8 @@ async function processPdf(file,{background=false}={}){
   local.sourceReport.totalPages=extracted.totalPages;
   local.sourceReport.visualPages=extracted.visualPages;
   local.sourceReport.historyOcrPages=extracted.historyOcrPages||0;
+  local.sourceReport.historyVisualPages=extracted.historyVisualPages||0;
+  local.sourceReport.historyRatingsRecovered=extracted.historyRatingsRecovered||0;
   local.sourceReport.readProgress=100;
   setReportReadProgress(100);
   local.sourceReport.interpretationEngine='Reglas locales · respuesta inmediata';
@@ -1691,6 +1706,60 @@ function pdfItemsToLayoutText(items=[],rowTolerance=2.2){
  }).filter(Boolean).join('\n');
 }
 
+
+function classifyHistoricalBadgeColor(r,g,b){
+ const max=Math.max(r,g,b),min=Math.min(r,g,b);
+ if(max-min<35)return '';
+ if(g>r*1.25&&g>b*1.2&&g>100)return 'NOR';
+ if(r>220&&g>160&&b<105)return 'CPP';
+ if(r>220&&g>=70&&g<=160&&b<110)return 'DEF';
+ if(r>150&&g<110&&b<130)return 'DUD';
+ if(max<135&&max-min>20&&b>=r*.7)return 'PER';
+ return '';
+}
+async function extractHistoricalRatingsByColor(page,items=[]){
+ const dateItems=(items||[]).filter(it=>/^\d{2}\/\d{2}\/\d{4}$/.test(String(it?.str||'').trim()));
+ if(dateItems.length<2)return {ratings:[],dateCount:dateItems.length};
+ const base=page.getViewport({scale:1});
+ const headerXs=(items||[])
+  .filter(it=>/^(?:peor|califi\.?|calif\.?)$/i.test(String(it?.str||'').trim()))
+  .map(it=>(Number(it?.transform?.[4])||0)+(Number(it?.width)||0)/2)
+  .filter(x=>x>base.width*.30&&x<base.width*.50);
+ const columnX=headerXs.length?headerXs.reduce((a,b)=>a+b,0)/headerXs.length:base.width*.395;
+ const scale=Math.min(2.0,Math.max(1.65,1350/Math.max(base.width,1)));
+ const viewport=page.getViewport({scale});
+ const canvas=document.createElement('canvas');
+ canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+ const ctx=canvas.getContext('2d',{alpha:false,willReadFrequently:true});
+ ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+ await page.render({canvasContext:ctx,viewport}).promise;
+ const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+ const ratings=[];
+ const pixelAt=(x,y)=>{
+  if(x<0||y<0||x>=canvas.width||y>=canvas.height)return null;
+  const i=(Math.floor(y)*canvas.width+Math.floor(x))*4;
+  return [pixels[i],pixels[i+1],pixels[i+2]];
+ };
+ for(const item of dateItems){
+  const date=String(item.str).trim();
+  const tx=Number(item?.transform?.[4])||0,ty=Number(item?.transform?.[5])||0;
+  const point=viewport.convertToViewportPoint(columnX,ty);
+  const cx=point[0],cy=point[1];
+  const counts={NOR:0,CPP:0,DEF:0,DUD:0,PER:0};
+  const rx=Math.max(8,12*scale),ry=Math.max(5,5.5*scale);
+  for(let y=Math.floor(cy-ry);y<=Math.ceil(cy+ry*.45);y+=2){
+   for(let x=Math.floor(cx-rx);x<=Math.ceil(cx+rx);x+=2){
+    const rgb=pixelAt(x,y);if(!rgb)continue;
+    const code=classifyHistoricalBadgeColor(rgb[0],rgb[1],rgb[2]);
+    if(code)counts[code]++;
+   }
+  }
+  const best=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+  if(best&&best[1]>=8)ratings.push({date,rating:best[0]});
+ }
+ return {ratings,dateCount:dateItems.length};
+}
+
 async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
  const pdfjs=await import('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs');
  pdfjs.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs';
@@ -1700,7 +1769,7 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
  const pages=Array(totalPages).fill('');
  const visualJobs=[];
  const historyOcrJobs=[];
- let digitalPages=0,visualPages=0,historyOcrPages=0,quickTriggered=false;
+ let digitalPages=0,visualPages=0,historyOcrPages=0,historyVisualPages=0,historyRatingsRecovered=0,quickTriggered=false;
 
  const maybeStartQuick=()=>{
   if(quickTriggered||typeof onQuickText!=='function')return;
@@ -1730,7 +1799,7 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
     const historicalRows=dates>=3&&(rowLike>=3||/(?:sema\.?|riesgo|deuda total|deuda vencida|califi)/i.test(detectText));
     if(historicalHeader||historicalRows){
      pages[i-1]+='\n--- LAYOUT HISTÓRICO REFORZADO PÁGINA '+i+' ---\n'+wideLayoutText;
-     if(historyOcrJobs.length<8)historyOcrJobs.push({page,pageNumber:i,index:i-1});
+     if(historyOcrJobs.length<8)historyOcrJobs.push({page,pageNumber:i,index:i-1,items:content.items});
     }
    }
    maybeStartQuick();
@@ -1761,18 +1830,36 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
  }
 
  if(historyOcrJobs.length){
-  historyOcrPages=historyOcrJobs.length;
-  updateProcessDetail('Lectura profunda · recuperando calificaciones históricas NOR / CPP / DEF / DUD / PER…');
-  await getOcrScheduler();
-  let histDone=0;
+  updateProcessDetail('Lectura profunda · recuperando clasificaciones históricas por color…');
+  let colorDone=0;
   await parallelMapLimit(historyOcrJobs,2,async job=>{
-   const image=await renderPageForVision(job.page,true);
-   const visualText=await readPageWithOcr(image,job.pageNumber);
-   pages[job.index]+='\n--- OCR HISTÓRICO PÁGINA '+job.pageNumber+' ---\n'+visualText;
-   histDone++;
-   setReportReadProgress(86+(histDone/Math.max(historyOcrPages,1))*7);
-   updateProcessDetail('Historial financiero '+histDone+' de '+historyOcrPages+' · leyendo calificaciones…');
+   try{
+    const found=await extractHistoricalRatingsByColor(job.page,job.items||[]);
+    job.visualRatings=found.ratings||[];
+    if(job.visualRatings.length){
+     historyVisualPages++;
+     historyRatingsRecovered+=job.visualRatings.length;
+     pages[job.index]+='\n--- CLASIFICACIONES VISUALES PÁGINA '+job.pageNumber+' ---\n'+job.visualRatings.map(v=>v.date+' '+v.rating).join('\n');
+    }
+   }catch{}
+   colorDone++;
+   setReportReadProgress(86+(colorDone/Math.max(historyOcrJobs.length,1))*4);
   });
+
+  const ocrFallbackJobs=historyOcrJobs.filter(job=>!job.visualRatings?.length);
+  if(ocrFallbackJobs.length){
+   historyOcrPages=ocrFallbackJobs.length;
+   updateProcessDetail('Lectura profunda · OCR de respaldo para clasificaciones no recuperadas…');
+   await getOcrScheduler();
+   let histDone=0;
+   await parallelMapLimit(ocrFallbackJobs,2,async job=>{
+    const image=await renderPageForVision(job.page,true);
+    const visualText=await readPageWithOcr(image,job.pageNumber);
+    pages[job.index]+='\n--- OCR HISTÓRICO PÁGINA '+job.pageNumber+' ---\n'+visualText;
+    histDone++;
+    setReportReadProgress(90+(histDone/Math.max(historyOcrPages,1))*3);
+   });
+  }
  }
 
  setReportReadProgress(94);
@@ -1782,7 +1869,7 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
   Promise.resolve(onQuickText(text.slice(0,90000))).catch(()=>{});
  }
 
- return {text,totalPages,digitalPages,visualPages,historyOcrPages};
+ return {text,totalPages,digitalPages,visualPages,historyOcrPages,historyVisualPages,historyRatingsRecovered};
 }
 
 function isDigitalTextUseful(text,items){
@@ -2392,10 +2479,11 @@ function renderFiveYearMatrix(data){
 }
 function renderFiveYearTrend(data){
  const svg=$('#fiveYearTrendChart'),tooltip=$('#fiveYearTrendTooltip');if(!svg)return;
- const months=data.months.filter(x=>x.row);
- if(months.length<2){svg.innerHTML='';return}
+ const months=data.months;
+ const available=months.filter(x=>x.row);
+ if(available.length<2){svg.innerHTML='';return}
  const w=960,h=300,pL=54,pR=18,pT=18,pB=38,plotW=w-pL-pR,plotH=h-pT-pB;
- const values=months.flatMap(x=>[Number(x.row.totalDebt)||0,Number(x.row.overdueSbs)||0,Number(x.row.unpaidDocs)||0]);
+ const values=available.flatMap(x=>[Number(x.row.totalDebt)||0,Number(x.row.overdueSbs)||0,Number(x.row.unpaidDocs)||0]);
  const max=Math.max(1,...values);
  const xFor=(year,month)=>{
   const index=(year-data.years[0])*12+(month-1);
@@ -2420,15 +2508,23 @@ function renderFiveYearTrend(data){
  ];
  let paths='',points='';
  for(const s of series){
-  const pts=months.map(m=>({x:xFor(m.year,m.month),y:yFor(m.row[s.key]),m,value:Number(m.row[s.key])||0}));
-  const positive=pts.filter(q=>q.value>0||s.key==='totalDebt');
-  if(positive.length>1)paths+='<path class="five-year-line '+s.cls+'" d="'+positive.map((q,i)=>(i?'L':'M')+q.x+' '+q.y).join(' ')+'"/>';
-  for(const q of positive){
-   const rating=financeRating(q.m.row);
-   const tip=[s.name,q.m.row.date,reportMoney(q.value),rating?rating+' · '+financeRatingLabel(rating):''].filter(Boolean).join(' · ');
-   points+='<circle class="five-year-point '+s.cls+'" cx="'+q.x+'" cy="'+q.y+'" r="4" data-tip="'+esc(tip)+'" data-x="'+q.x+'" data-y="'+q.y+'"/>';
-   points+='<circle class="five-year-hit" cx="'+q.x+'" cy="'+q.y+'" r="11" data-tip="'+esc(tip)+'" data-x="'+q.x+'" data-y="'+q.y+'"/>';
+  let segment=[];
+  const flush=()=>{
+   if(segment.length>1)paths+='<path class="five-year-line '+s.cls+'" d="'+segment.map((q,i)=>(i?'L':'M')+q.x+' '+q.y).join(' ')+'"/>';
+   segment=[];
+  };
+  for(const m of months){
+   if(!m.row){flush();continue}
+   const value=Number(m.row[s.key]);
+   if(!Number.isFinite(value)){flush();continue}
+   const q={x:xFor(m.year,m.month),y:yFor(value),m,value};
+   segment.push(q);
+   const rating=financeRating(m.row);
+   const tip=[s.name,m.row.date,reportMoney(value),rating?rating+' · '+financeRatingLabel(rating):''].filter(Boolean).join(' · ');
+   points+='<circle class="five-year-point '+s.cls+'" cx="'+q.x+'" cy="'+q.y+'" r="3.5" data-tip="'+esc(tip)+'" data-x="'+q.x+'" data-y="'+q.y+'"/>';
+   points+='<circle class="five-year-hit" cx="'+q.x+'" cy="'+q.y+'" r="10" data-tip="'+esc(tip)+'" data-x="'+q.x+'" data-y="'+q.y+'"/>';
   }
+  flush();
  }
  svg.innerHTML=grid+paths+points;
  const showTip=e=>{
@@ -2450,6 +2546,14 @@ function renderFiveYearFinancial(x){
  const referenceYear=reportReferenceYear(x);
  const data=fiveYearMonthlyHistory(history,referenceYear);
  const hasRows=data.years.length>0&&data.months.some(m=>m.row);
+ const coverageEl=$('#fiveYearCoverage');
+ if(coverageEl){
+  const available=data.months.filter(m=>m.row);
+  if(available.length){
+   const first=available[0],last=available[available.length-1];
+   coverageEl.textContent='Cobertura real del PDF: '+String(first.month).padStart(2,'0')+'/'+first.year+' → '+String(last.month).padStart(2,'0')+'/'+last.year+'. Los demás meses se muestran vacíos porque el reporte no los contiene.';
+  }else coverageEl.textContent='';
+ }
  toggleBlock('#financialFiveYearSection',deepMode||hasRows);
  if(!deepMode&&!hasRows)return;
  const kbox=$('#fiveYearKpis'),matrix=$('#fiveYearMatrix'),svg=$('#fiveYearTrendChart');
@@ -2510,6 +2614,8 @@ function renderCoverage(x){
   ['Método de lectura',s.extractionMode],
   ['Páginas del reporte',s.totalPages],
   ['Páginas leídas visualmente',s.visualPages!=null?String(s.visualPages):''],
+  ['Clasificaciones históricas visuales',s.historyRatingsRecovered?String(s.historyRatingsRecovered):''],
+  ['Páginas históricas leídas por color',s.historyVisualPages?String(s.historyVisualPages):''],
   ['Páginas históricas reforzadas por OCR',s.historyOcrPages?String(s.historyOcrPages):''],
   ['Periodo cubierto',s.periodCovered],
   ['Secciones estructuradas',det?(det+(exp?' / '+exp:'')):''],
