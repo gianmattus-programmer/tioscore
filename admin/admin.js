@@ -741,17 +741,47 @@ function parseSentinelHistory(text=''){
  }
  return rows;
 }
-function parseSentinelUnpaidDocument(text=''){
+function parseSentinelUnpaidDocuments(text=''){
  const source=String(text);
- const total=reportCapture(source,[/Documentos Impagos\s+([\d,]+\.\d{2})/i]);
- const m=source.match(/Documentos Impagos\s+[\d,]+\.\d{2}\s+(?:\d+\s+)?([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ0-9 .&'\-]{2,80}?)\s+([\d,]+\.\d{2})\s+(?:D[ií]as\s+Venc\.?\s*)?(\d{1,4})\b/i);
- if(!m)return total?{total:reportMoneyNumber(total)||0,creditor:'',amount:reportMoneyNumber(total)||0,days:0}:null;
- const creditor=String(m[1]||'').replace(/\s+/g,' ').trim();
- return {total:reportMoneyNumber(total||m[2])||0,creditor,amount:reportMoneyNumber(m[2])||0,days:Number(m[3])||0};
+ const totalRaw=reportCapture(source,[/Documentos Impagos\s+([\d,]+\.\d{2})/i]);
+ const total=reportMoneyNumber(totalRaw)||0;
+ const start=source.search(/Documentos Impagos/i);
+ if(start<0)return {total:0,items:[]};
+ const chunk=source.slice(start,start+900);
+ const items=[];
+ const re=/(?:^|\s)\d+\s+([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ0-9 .&'\-]{2,70}?)\s+([\d,]+\.\d{2})\s+(\d{1,4})\b/g;
+ let m;
+ while((m=re.exec(chunk))){
+  const creditor=String(m[1]||'').replace(/\s+/g,' ').trim();
+  if(/^(?:otros documentos|sem[aá]foro|montos expresados|detalle|total)$/i.test(creditor))continue;
+  items.push({creditor,amount:reportMoneyNumber(m[2])||0,days:Number(m[3])||0});
+  if(items.length>=12)break;
+ }
+ return {total:total||items.reduce((s,x)=>s+x.amount,0),items};
+}
+function parseSentinelUnpaidDocument(text=''){
+ const group=parseSentinelUnpaidDocuments(text);
+ const first=group.items[0];
+ return first?{total:group.total,creditor:first.creditor,amount:first.amount,days:first.days}:group.total?{total:group.total,creditor:'',amount:group.total,days:0}:null;
+}
+function parseCreditLines(text=''){
+ const source=String(text);
+ const start=source.search(/Utilizaci[oó]n de L[ií]neas de Cr[eé]dito/i);
+ if(start<0)return [];
+ const chunk=source.slice(start,start+1200);
+ const rows=[];
+ const re=/\b([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ0-9 .&'\-]{1,35})\s+(TCO|LDC|TC|CR[EÉ]D(?:ITO)?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d{1,3})%/g;
+ let m;
+ while((m=re.exec(chunk))){
+  rows.push({entity:String(m[1]).trim(),type:m[2],approved:reportMoneyNumber(m[3])||0,unused:reportMoneyNumber(m[4])||0,used:reportMoneyNumber(m[5])||0,utilization:Number(m[6])||0});
+  if(rows.length>=10)break;
+ }
+ return rows;
 }
 function buildSentinelDeepAnalysis(text='',analysisMode='deep'){
  if(analysisMode!=='deep')return null;
  const history=parseSentinelHistory(text);
+ const unpaidGroup=parseSentinelUnpaidDocuments(text);
  const unpaid=parseSentinelUnpaidDocument(text);
  if(!history.length&&!unpaid)return {mode:'deep',observations:0,signals:[],recent:[]};
  const latest=history[0]||{};
@@ -776,9 +806,10 @@ function buildSentinelDeepAnalysis(text='',analysisMode='deep'){
   currentFinancialDebt:latest.totalDebt??null,
   currentNormalPct:latest.normalPct??null,
   currentOverdueSbs:latest.overdueSbs??null,
-  currentUnpaidDocs:Math.max(latest.unpaidDocs||0,unpaid?.amount||0),
+  currentUnpaidDocs:Math.max(latest.unpaidDocs||0,unpaidGroup.total||0),
   creditor:unpaid?.creditor||'',
   creditorDays:unpaid?.days||0,
+  unpaidItems:unpaidGroup.items,
   peakDebt:peakDebt?.totalDebt||0,
   peakDebtDate:peakDebt?.date||'',
   peakOverdue:peakOverdue?.overdueSbs||0,
@@ -859,6 +890,7 @@ function parseCreditReport(source,meta={}){
  const sunatUpdate=reportCapture(text,[/(?:[uú]ltima actualizaci[oó]n SUNAT|sunatLastUpdate)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i]);
  const reportPages=reportCapture(text,[/(?:p[aá]ginas del reporte|reportPages)\s*[:\-]?\s*(\d{1,3})/i])||String(meta.totalPages||'');
  const institutions=detectInstitutions(text);
+ const creditLines=parseCreditLines(text);
 
  add('Nombre',name?firstName(name):'');
  add('Tipo de documento',documentType);
@@ -888,6 +920,10 @@ function parseCreditReport(source,meta={}){
  add('Última actualización SUNAT',sunatUpdate);
  add('Páginas del reporte',reportPages);
  if(institutions.length)add('Entidades detectadas',institutions.join(' · '));
+ if(creditLines.length){
+  add('Líneas de crédito detectadas',creditLines.length);
+  add('Línea de crédito utilizada',reportMoney(creditLines.reduce((s,x)=>s+x.used,0)));
+ }
  if(deepAnalysis){
   add('Registros históricos analizados',deepAnalysis.observations||'');
   if(deepAnalysis.peakDebt)add('Pico histórico de deuda',reportMoney(deepAnalysis.peakDebt));
@@ -930,9 +966,17 @@ function parseCreditReport(source,meta={}){
  if(current!=null&&current>0)obligations.push({entity:'Sistema financiero',product:'Deuda vigente',balance:reportMoney(current),status:'Vigente',detail:'Monto global identificado en el reporte'});
  if(overdue!=null&&overdue>0)obligations.push({entity:'Sistema financiero',product:'Deuda vencida',balance:reportMoney(overdue),status:'Vencida',detail:(overdueDays||bcpDays)?'Atraso detectado: '+Math.max(Number(overdueDays)||0,Number(bcpDays)||0)+' días':'Monto vencido identificado'});
  if(docs!=null&&docs>0)obligations.push({entity:'Documentos',product:'Documentos vencidos',balance:reportMoney(docs),status:'Vencida',detail:'Documentos impagos identificados'});
- if(deepAnalysis?.creditor&&deepAnalysis.currentUnpaidDocs>0){
+ if(Array.isArray(deepAnalysis?.unpaidItems)&&deepAnalysis.unpaidItems.length){
+  for(const item of deepAnalysis.unpaidItems){
+   obligations.push({entity:item.creditor,product:'Documento impago',balance:reportMoney(item.amount),status:'Vencida',detail:item.days?item.days+' días de vencimiento':'Atraso identificado'});
+   entities.push({name:item.creditor,type:'Acreedor comercial',product:'Documento impago',balance:reportMoney(item.amount),status:'Vencida',daysPastDue:item.days?item.days+' días':'',classification:'Comercial',limit:'',monthlyPayment:''});
+  }
+ }else if(deepAnalysis?.creditor&&deepAnalysis.currentUnpaidDocs>0){
   obligations.push({entity:deepAnalysis.creditor,product:'Documento impago',balance:reportMoney(deepAnalysis.currentUnpaidDocs),status:'Vencida',detail:(deepAnalysis.creditorDays?deepAnalysis.creditorDays+' días de vencimiento':'Atraso identificado')});
-  entities.push({name:deepAnalysis.creditor,type:'Acreedor comercial',product:'Documento impago',balance:reportMoney(deepAnalysis.currentUnpaidDocs),status:'Vencida',daysPastDue:deepAnalysis.creditorDays?deepAnalysis.creditorDays+' días':'',classification:'Comercial',limit:'',monthlyPayment:''});
+ }
+ for(const line of creditLines){
+  entities.push({name:line.entity,type:'Línea de crédito',product:line.type,balance:reportMoney(line.used),status:'Vigente',daysPastDue:'',classification:'',limit:reportMoney(line.approved),monthlyPayment:''});
+  obligations.push({entity:line.entity,product:'Línea '+line.type,balance:reportMoney(line.used),status:'Vigente',detail:'Línea aprobada '+reportMoney(line.approved)+' · utilización '+line.utilization+'%'});
  }
 
  const financialLabels=new Set(['Score Experian','Nivel del score','Bancarizado','Capacidad de pago mensual','Deuda vigente · Consulta rápida','Deuda vigente SBS / Microfinanzas','Deuda vencida SBS / Microfinanzas','Monto de documentos vencidos','Días de vencimiento del documento','Días de atraso visibles en BCP','Documentos protestados no regularizados','Documentos protestados regularizados']);
@@ -964,6 +1008,10 @@ function parseCreditReport(source,meta={}){
  if(docs!=null)metrics.push({value:reportMoney(docs),label:'Documentos vencidos',danger:docs>0});
  if(overdueDays||bcpDays)metrics.push({value:String(Math.max(Number(overdueDays)||0,Number(bcpDays)||0)),label:'Máx. días de atraso',danger:true});
  if(capacity)metrics.push({value:capacity,label:'Capacidad de pago'});
+ if(creditLines.length){
+  metrics.push({value:reportMoney(creditLines.reduce((s,x)=>s+x.approved,0)),label:'Línea aprobada'});
+  metrics.push({value:reportMoney(creditLines.reduce((s,x)=>s+x.used,0)),label:'Línea utilizada'});
+ }
  if(deepAnalysis?.peakDebt)metrics.push({value:reportMoney(deepAnalysis.peakDebt),label:'Pico histórico'});
  if(deepAnalysis?.debtReductionFromPeak!=null)metrics.push({value:deepAnalysis.debtReductionFromPeak.toFixed(1)+'%',label:'Reducción desde pico'});
  if(deepAnalysis?.observations)metrics.push({value:String(deepAnalysis.observations),label:'Registros históricos'});
@@ -982,7 +1030,7 @@ function parseCreditReport(source,meta={}){
  const analysis={
   sourceReport:{provider:profile.provider,type:'Reporte crediticio',template:profile.template,profileFamily:profile.family,profileConfidence:profile.confidence,reportDate:updated||creation||'',periodCovered,sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local',analysisMode},
   client:{name:firstName(name||'Cliente'),document:protectedDocument(dni||ruc||ce)||'Documento protegido',age:'',reportDate:updated||creation||'',entities:institutions.join(' · ')},
-  score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,deepAnalysis,
+  score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,deepAnalysis,creditLines,
   metrics,debtSeries,debtComposition,monthlyBehavior,entities,obligations,inquiries:[],raw,reportSections,
   reportCharts:{noteEvolution,classificationHistory:[],overdueByType,overdueShare,currentVsOverdue,institutionShare:[]}
  };
@@ -1696,12 +1744,12 @@ function loadAnalysis(a,isDemo=false,filename='',options={}){
  const scoreInfo=renderScoreGauge(x.score);
  setScoreFace($('#clientScoreFace'),x.score);
  $('#riskBadge').textContent=scoreInfo.category;
- $('#scoreDescription').textContent=x.scoreDescription||'Sin interpretación suficiente.';
+ $('#scoreDescription').textContent=isMeaningfulDisplayValue(x.scoreDescription)?x.scoreDescription:'';
  const dc=Number(x.debtChange),deltaEl=$('#debtDelta');if(deltaEl){const hasDelta=Number.isFinite(dc)&&dc!==0;deltaEl.textContent=hasDelta?(dc<0?'↓ Deuda -':'↑ Deuda +')+Math.abs(dc).toFixed(2)+'%':'';deltaEl.classList.toggle('hidden',!hasDelta)}
- $('#executiveSummary').textContent=x.summary||'No se generó resumen.';
+ $('#executiveSummary').textContent=isMeaningfulDisplayValue(x.summary)?x.summary:'';
  $('#summaryTags').innerHTML=x.tags.map(t=>'<span>'+esc(t)+'</span>').join('');
  $('#alertsGrid').innerHTML=x.alerts.map(v=>'<div class="alert '+esc(v.level)+'"><div class="alert-top"><i class="alert-dot"></i><b>'+esc(v.title)+'</b></div><p>'+esc(v.text)+'</p></div>').join('')||'<div class="empty-line">Sin alertas identificadas.</div>';
- renderRecommendations(x.recommendations);$('#closingHeadline').textContent=x.closing.headline||'Conclusión';$('#closingText').textContent=x.closing.text||'Sin cierre disponible.';
+ renderRecommendations(x.recommendations);$('#closingHeadline').textContent=isMeaningfulDisplayValue(x.closing.headline)?x.closing.headline:'Conclusión';$('#closingText').textContent=isMeaningfulDisplayValue(x.closing.text)?x.closing.text:'';
  renderChecklist(x.checklist);renderFollowUp(x.followUp);renderDeepAnalysis(x.deepAnalysis,x.sourceReport?.analysisMode||'fast');renderData(x.raw);renderEntities(x.entities);renderObligations(x.obligations);renderInquiries(x.inquiries);renderSections(x.reportSections);
  renderMetrics(x.metrics);renderReportCharts(x);renderCoverage(x);
  $('#advisorNotes').value=x.notes||'';
@@ -1805,7 +1853,10 @@ function isMeaningfulDisplayValue(value){
  if(value==null)return false;
  const s=String(value).trim();
  if(!s)return false;
- return !/^(?:no informado|no determinado|no determinada|no disponible|no registrado|n\/a|null|undefined|—)$/i.test(s);
+ if(/^(?:n\/a|null|undefined|—|-)$/i.test(s))return false;
+ if(/^no\s+(?:informad[oa]|determinad[oa]|disponible|registrad[oa])(?:\s+.*)?$/i.test(s))return false;
+ if(/^sin\s+(?:informaci[oó]n|datos)\s+(?:disponible|suficiente|estructurad[oa])(?:\s+.*)?$/i.test(s))return false;
+ return true;
 }
 function toggleBlock(selector,show){
  const el=$(selector);if(el)el.classList.toggle('hidden',!show);
@@ -1815,7 +1866,7 @@ function cleanDisplayItems(items=[]){
 }
 function normalize(a){
  const x=a||{};x.sourceReport=x.sourceReport||{};x.client=x.client||{};x.alerts=Array.isArray(x.alerts)?x.alerts:[];x.tags=Array.isArray(x.tags)?x.tags:[];
- x.metrics=Array.isArray(x.metrics)?x.metrics:[];x.debtSeries=Array.isArray(x.debtSeries)?x.debtSeries:[];x.debtComposition=Array.isArray(x.debtComposition)?x.debtComposition:[];
+ x.metrics=Array.isArray(x.metrics)?x.metrics:[];x.debtSeries=Array.isArray(x.debtSeries)?x.debtSeries:[];x.debtComposition=Array.isArray(x.debtComposition)?x.debtComposition:[];x.creditLines=Array.isArray(x.creditLines)?x.creditLines:[];
  x.monthlyBehavior=Array.isArray(x.monthlyBehavior)?x.monthlyBehavior:[];x.entities=Array.isArray(x.entities)?x.entities:[];x.obligations=Array.isArray(x.obligations)?x.obligations:[];
  x.inquiries=Array.isArray(x.inquiries)?x.inquiries:[];x.recommendations=Array.isArray(x.recommendations)?x.recommendations:[];x.checklist=Array.isArray(x.checklist)?x.checklist:[];
  x.raw=x.raw&&typeof x.raw==='object'?x.raw:{};x.reportSections=Array.isArray(x.reportSections)?x.reportSections:[];x.closing=x.closing||{};x.followUp=x.followUp&&typeof x.followUp==='object'?x.followUp:{};x.followUp.verificationPoints=Array.isArray(x.followUp.verificationPoints)?x.followUp.verificationPoints:[];x.followUp.questions=Array.isArray(x.followUp.questions)?x.followUp.questions:[];x.deepAnalysis=x.deepAnalysis&&typeof x.deepAnalysis==='object'?x.deepAnalysis:null;if(x.deepAnalysis){x.deepAnalysis.signals=Array.isArray(x.deepAnalysis.signals)?x.deepAnalysis.signals:[];x.deepAnalysis.recent=Array.isArray(x.deepAnalysis.recent)?x.deepAnalysis.recent:[];x.deepAnalysis.history=Array.isArray(x.deepAnalysis.history)?x.deepAnalysis.history:[];}
@@ -1837,11 +1888,13 @@ function renderChecklist(items){
  updateCheck();
 }
 function renderFollowUp(f={}){
- const timing=$('#followUpTiming');if(timing)timing.textContent=f.timeframe||'Por definir';
- const objective=$('#followUpObjective');if(objective)objective.textContent=f.objective||'Definir objetivos para la siguiente revisión.';
- const next=$('#followUpReview');if(next)next.textContent=f.nextReview||'Comparar un reporte actualizado con la lectura actual.';
- const points=$('#followUpPoints');if(points)points.innerHTML=(f.verificationPoints||[]).map(x=>'<li>'+esc(x)+'</li>').join('')||'<li>Revisar cambios relevantes del reporte.</li>';
- const questions=$('#followUpQuestions');if(questions)questions.innerHTML=(f.questions||[]).map(x=>'<li>'+esc(x)+'</li>').join('')||'<li>¿Qué cambió desde la última asesoría?</li>';
+ const timing=$('#followUpTiming');if(timing){timing.textContent=isMeaningfulDisplayValue(f.timeframe)?f.timeframe:'';timing.classList.toggle('hidden',!isMeaningfulDisplayValue(f.timeframe))}
+ const objective=$('#followUpObjective');if(objective)objective.textContent=isMeaningfulDisplayValue(f.objective)?f.objective:'';
+ const next=$('#followUpReview');if(next)next.textContent=isMeaningfulDisplayValue(f.nextReview)?f.nextReview:'';
+ const pts=(f.verificationPoints||[]).filter(isMeaningfulDisplayValue);
+ const qs=(f.questions||[]).filter(isMeaningfulDisplayValue);
+ const points=$('#followUpPoints');if(points)points.innerHTML=pts.map(x=>'<li>'+esc(x)+'</li>').join('');
+ const questions=$('#followUpQuestions');if(questions)questions.innerHTML=qs.map(x=>'<li>'+esc(x)+'</li>').join('');
 }
 function renderDeepAnalysis(deep,mode='fast'){
  const grid=$('#deepSummaryGrid'),signals=$('#deepSignals'),recent=$('#deepHistoryRecent'),badge=$('#deepAnalysisBadge');
