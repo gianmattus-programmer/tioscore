@@ -1419,14 +1419,14 @@ function normalizeLocalInterpretation(x){
 function mergeQwenNarrative(analysis,narrative){
  const base=buildRuleInterpretation(analysis);
  const n=narrative&&typeof narrative==='object'?narrative:{};
- if(n.scoreDescription)base.scoreDescription=String(n.scoreDescription);
- if(n.summary)base.summary=String(n.summary);
- if(n.priorityAction){
+ if(isMeaningfulDisplayValue(n.scoreDescription))base.scoreDescription=String(n.scoreDescription);
+ if(isMeaningfulDisplayValue(n.summary))base.summary=String(n.summary);
+ if(isMeaningfulDisplayValue(n.priorityAction)){
   base.recommendations=[{title:'Prioridad principal',text:String(n.priorityAction),impact:'Prioridad 1'},...base.recommendations.filter(r=>r.title!=='Prioridad principal')].slice(0,5);
  }
- if(n.closing)base.closing={headline:'Conclusión de la lectura',text:String(n.closing)};
- if(n.followUpObjective)base.followUp.objective=String(n.followUpObjective);
- if(n.nextQuestion)base.followUp.questions=[String(n.nextQuestion),...(base.followUp.questions||[]).filter(q=>q!==n.nextQuestion)].slice(0,4);
+ if(isMeaningfulDisplayValue(n.closing))base.closing={headline:'Conclusión de la lectura',text:String(n.closing)};
+ if(isMeaningfulDisplayValue(n.followUpObjective))base.followUp.objective=String(n.followUpObjective);
+ if(isMeaningfulDisplayValue(n.nextQuestion))base.followUp.questions=[String(n.nextQuestion),...(base.followUp.questions||[]).filter(q=>q!==n.nextQuestion)].slice(0,4);
  return normalizeLocalInterpretation(base);
 }
 function cleanQwenFieldText(value=''){
@@ -1710,7 +1710,7 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
   await getOcrScheduler();
   let histDone=0;
   await parallelMapLimit(historyOcrJobs,2,async job=>{
-   const image=await renderPageForVision(job.page);
+   const image=await renderPageForVision(job.page,true);
    const visualText=await readPageWithOcr(image,job.pageNumber);
    pages[job.index]+='\n--- OCR HISTÓRICO PÁGINA '+job.pageNumber+' ---\n'+visualText;
    histDone++;
@@ -1736,9 +1736,11 @@ function isDigitalTextUseful(text,items){
  return text.length>=70&&financialSignals>=3;
 }
 
-async function renderPageForVision(page){
+async function renderPageForVision(page,highDetail=false){
  const base=page.getViewport({scale:1});
- const targetWidth=base.width>0?Math.min(1500,Math.max(1050,base.width*1.55)):1300;
+ const targetWidth=highDetail
+  ?(base.width>0?Math.min(2400,Math.max(1800,base.width*2.35)):2100)
+  :(base.width>0?Math.min(1500,Math.max(1050,base.width*1.55)):1300);
  const scale=targetWidth/base.width;
  const viewport=page.getViewport({scale});
  const canvas=document.createElement('canvas');
@@ -1749,7 +1751,7 @@ async function renderPageForVision(page){
  ctx.fillRect(0,0,canvas.width,canvas.height);
  await page.render({canvasContext:ctx,viewport}).promise;
 
- let quality=.70;
+ let quality=highDetail?.82:.70;
  let image=canvas.toDataURL('image/jpeg',quality);
  while(image.length>2_100_000&&quality>.46){
   quality-=.08;
@@ -2289,11 +2291,12 @@ function fiveYearKpis(data){
  for(const m of data.months){
   if(financeRating(m.row)==='NOR'){streak++;bestStreak=Math.max(bestStreak,streak)}else streak=0;
  }
+ const rated=rows.filter(r=>financeRating(r)).length;
  return [
-  {label:'Estado actual',value:financeRating(latest)||'—',className:financeRating(latest)==='NOR'?'good':financeRating(latest)?'warn':''},
-  {label:'Peor calificación 5 años',value:financeRating(worst)?financeRating(worst)+' · '+worst.date:'—',className:/^(DEF|DUD|PER)$/.test(financeRating(worst))?'bad':'warn'},
+  {label:'Meses con datos',value:String(rows.length),className:rows.length>=12?'good':''},
+  {label:'Estado actual',value:financeRating(latest)||'Semáforo '+(Number(latest.signal)>2?'rojo':Number(latest.signal)>=.001?'amarillo':'verde'),className:financeRating(latest)==='NOR'?'good':financeRating(latest)?'warn':''},
   {label:'Pico de deuda',value:(Number(peak.totalDebt)||0)>0?compactMoney(peak.totalDebt)+' · '+peak.date:'—',className:'warn'},
-  {label:'Mejor racha NOR',value:bestStreak?bestStreak+' mes'+(bestStreak===1?'':'es'):'—',className:bestStreak>=6?'good':''}
+  {label:'Calificaciones legibles',value:rated?String(rated)+' mes'+(rated===1?'':'es'):'OCR reforzado',className:rated?'good':'warn'}
  ];
 }
 function renderFiveYearMatrix(data){
