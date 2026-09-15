@@ -6,6 +6,7 @@ env.useBrowserCache=true;
 env.useWasmCache=true;
 
 let generator=null;
+let generatorPromise=null;
 const MODEL_ID="onnx-community/Qwen2.5-0.5B-Instruct";
 
 function send(id,type,data={}){self.postMessage({id,type,...data})}
@@ -25,16 +26,23 @@ function generatedText(out){
 }
 async function ensureGenerator(id){
   if(generator)return generator;
-  send(id,"status",{message:"Preparando Qwen CPU…"});
-  generator=await pipeline("text-generation",MODEL_ID,{
+  if(generatorPromise)return generatorPromise;
+  send(id,"status",{message:"Preparando Qwen local estable…"});
+  generatorPromise=pipeline("text-generation",MODEL_ID,{
     dtype:"q4",
     progress_callback:p=>{
       const pct=progressToPct(p);
       const label=String(p?.file||p?.status||"Descargando modelo");
       send(id,"progress",{progress:pct,message:label});
     }
+  }).then(pipe=>{
+    generator=pipe;
+    return pipe;
+  }).catch(err=>{
+    generatorPromise=null;
+    throw err;
   });
-  return generator;
+  return generatorPromise;
 }
 self.onmessage=async e=>{
   const {id,type,messages,maxNewTokens=420}=e.data||{};
@@ -44,7 +52,7 @@ self.onmessage=async e=>{
     if(type==="init"){
       const out=await gen([{role:"user",content:"Responde solo: OK"}],{max_new_tokens:5,do_sample:false});
       const text=generatedText(out);
-      if(!text)throw new Error("Qwen CPU cargó pero no generó texto.");
+      if(!text)throw new Error("Qwen local cargó pero no generó texto.");
       send(id,"ready",{model:MODEL_ID,probe:text.slice(0,30)});
       return;
     }
@@ -55,10 +63,10 @@ self.onmessage=async e=>{
         repetition_penalty:1.08
       });
       const text=generatedText(out);
-      if(!text)throw new Error("Qwen CPU no devolvió contenido.");
+      if(!text)throw new Error("Qwen local no devolvió contenido.");
       send(id,"result",{text,model:MODEL_ID});
     }
   }catch(err){
-    send(id,"error",{message:String(err?.message||err||"Error Qwen CPU")});
+    send(id,"error",{message:String(err?.message||err||"Error Qwen local")});
   }
 };
