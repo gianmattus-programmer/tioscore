@@ -1126,3 +1126,13 @@ html,body{max-width:100%;overflow-x:hidden}
 
 /* ===== Cobertura real del historial financiero ===== */
 #fiveYearCoverage{display:block;margin-top:4px;font-weight:700;color:var(--muted);font-size:.62rem;line-height:1.45}
+
+
+/* ===== Historial financiero: celdas reales, sin placeholders ===== */
+.matrix-cell.matrix-empty{background:#fbfaf7;min-height:30px}
+.finance-status.risk-green{background:#e6f6eb;color:#147a43}
+.finance-status.risk-yellow{background:#fff1b8;color:#836800}
+.finance-status.risk-red{background:#ffe0dd;color:#aa3029}
+.five-year-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+@media(max-width:720px){.five-year-kpis{grid-template-columns:1fr 1fr}}
+@media(max-width:480px){.five-year-kpis{grid-template-columns:1fr}}
