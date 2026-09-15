@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#fbfaf7">
   <title>Tío Score · Análisis privado</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp">
-  <link rel="stylesheet" href="/admin/admin.css?v=20260915-history5y2">
+  <link rel="stylesheet" href="/admin/admin.css?v=20260915-history5y3">
 </head>
 <body>
   <div id="configGate" class="gate hidden">
@@ -241,13 +241,6 @@
                   <div id="metricsGrid" class="metrics-grid"></div>
                 </section>
 
-                <section class="pane-block deep-analysis-block">
-                  <div class="block-heading"><span>Lectura profunda</span><span id="deepAnalysisBadge" class="quiet-badge">Profundo</span></div>
-                  <div id="deepSummaryGrid" class="deep-summary-grid"></div>
-                  <div id="deepSignals" class="deep-signals"></div>
-                  <div id="deepHistoryRecent" class="deep-history-recent"></div>
-                </section>
-
                 <section id="financialFiveYearSection" class="pane-block five-year-financial-block">
                   <div class="block-heading"><span>Historial financiero · 5 años</span><span class="quiet-badge">ENE–DIC</span></div>
                   <p class="five-year-intro">Evolución mensual del reporte. Cada mes toma el último registro disponible de ese periodo. <span id="fiveYearCoverage"></span></p>
@@ -278,6 +271,15 @@
                     <div id="fiveYearMatrix" class="five-year-matrix"></div>
                   </div>
                 </section>
+
+
+                <section class="pane-block deep-analysis-block">
+                  <div class="block-heading"><span>Lectura profunda</span><span id="deepAnalysisBadge" class="quiet-badge">Profundo</span></div>
+                  <div id="deepSummaryGrid" class="deep-summary-grid"></div>
+                  <div id="deepSignals" class="deep-signals"></div>
+                  <div id="deepHistoryRecent" class="deep-history-recent"></div>
+                </section>
+
 
                 <section id="noteEvolutionSection" class="pane-block sentinel-chart-block">
                   <div class="block-heading"><span>Evolución de Nota</span></div>
@@ -390,6 +392,6 @@
     </main>
   </div>
 
-  <script type="module" src="/admin/admin.js?v=20260915-history5y2"></script>
+  <script type="module" src="/admin/admin.js?v=20260915-history5y3"></script>
 </body>
 </html>
