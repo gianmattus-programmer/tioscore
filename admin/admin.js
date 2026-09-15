@@ -753,7 +753,7 @@ function parseSentinelHistory(text=''){
   if(seen.has(m[1]))continue;
   seen.add(m[1]);
   const num=v=>Number(String(v).replace(/,/g,''))||0;
-  const rating=String(m[6]||'').toUpperCase();
+  const rating=String(m[6]||ratingByDate.get(m[1])||'').toUpperCase();
   rows.push({
    date:m[1],signal:Number(m[2])||0,entities:Number(m[3])||0,totalDebt:num(m[4]),normalPct:Number(m[5])||0,
    rating,
