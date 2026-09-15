@@ -1188,17 +1188,51 @@ function mergeQwenNarrative(analysis,narrative){
  if(n.nextQuestion)base.followUp.questions=[String(n.nextQuestion),...(base.followUp.questions||[]).filter(q=>q!==n.nextQuestion)].slice(0,4);
  return normalizeLocalInterpretation(base);
 }
+function cleanQwenFieldText(value=''){
+ return String(value||'')
+  .replace(/^[-*#\s]+/,'')
+  .replace(/\s+/g,' ')
+  .replace(/^["']+|["']+$/g,'')
+  .trim();
+}
+function parseQwenFieldResponse(text=''){
+ const raw=String(text||'').replace(/\r/g,'').trim();
+ if(!raw)return null;
+ const labels=[
+  ['scoreDescription','SCORE'],
+  ['summary','RESUMEN'],
+  ['priorityAction','PRIORIDAD'],
+  ['closing','CIERRE'],
+  ['followUpObjective','SEGUIMIENTO'],
+  ['nextQuestion','PREGUNTA']
+ ];
+ const out={};
+ for(let i=0;i<labels.length;i++){
+  const key=labels[i][0],label=labels[i][1];
+  const next=labels.slice(i+1).map(x=>x[1]).join('|');
+  const tail=next?'(?=\\n\\s*(?:'+next+')\\s*:|$)':'$';
+  const re=new RegExp('(?:^|\\n)\\s*'+label+'\\s*:\\s*([\\s\\S]*?)'+tail,'i');
+  const m=raw.match(re);
+  if(m&&m[1])out[key]=cleanQwenFieldText(m[1]);
+ }
+ if(!out.summary){
+  const stripped=cleanQwenFieldText(raw.replace(/^(SCORE|RESUMEN|PRIORIDAD|CIERRE|SEGUIMIENTO|PREGUNTA)\s*:\s*/gmi,''));
+  if(stripped)out.summary=stripped.slice(0,900);
+ }
+ return Object.keys(out).length?out:null;
+}
 async function runLocalInterpretation(analysis){
  await getLocalAiEngine();
  const deep=analysis.sourceReport?.analysisMode==='deep'&&analysis.deepAnalysis;
  const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,deep?3400:1700);
- const system='Eres asesor educativo de Tío Score en Perú. Usa únicamente los datos recibidos. No inventes cifras ni prometas aprobación o eliminación de registros. Responde SOLO JSON válido y breve.';
+ const system='Eres asesor educativo de Tío Score en Perú. Usa únicamente los datos recibidos. No inventes cifras ni prometas aprobación, aumento garantizado del score o eliminación de registros. Responde en español y sin markdown.';
  const focus=deep
-  ?'Haz una lectura profunda: compara situación actual con el pico histórico, distingue deuda vigente de vencida/documentos impagos, explica mejoras y riesgos históricos, y prioriza la siguiente acción.'
+  ?'Haz una lectura profunda: compara situación actual con el pico histórico, distingue deuda vigente de vencida y documentos impagos, explica mejoras y riesgos históricos, y prioriza la siguiente acción.'
   :'Haz una lectura rápida: interpreta el estado actual y prioriza la acción más importante.';
- const user='Devuelve exactamente este JSON: {"scoreDescription":"","summary":"","priorityAction":"","closing":"","followUpObjective":"","nextQuestion":""}. '+focus+' DATOS: '+payload;
+ const format='Responde usando exactamente estas seis etiquetas, cada una iniciando una línea: SCORE:, RESUMEN:, PRIORIDAD:, CIERRE:, SEGUIMIENTO:, PREGUNTA:. No uses JSON, llaves, listas ni bloques de código.';
+ const user=format+' '+focus+' Sé breve, concreto y útil para una asesoría. DATOS: '+payload;
  const messages=[{role:'system',content:system},{role:'user',content:user}];
- const maxOut=deep?340:230;
+ const maxOut=deep?320:220;
  let text='';
  if(localAiBackend==='cpu'){
   const out=await cpuQwenRequest('generate',{messages,maxNewTokens:maxOut},deep?420000:300000);
@@ -1207,11 +1241,9 @@ async function runLocalInterpretation(analysis){
   const reply=await localAiEngine.chat.completions.create({messages,temperature:0,max_tokens:maxOut});
   text=String(reply?.choices?.[0]?.message?.content||'');
  }
- const clean=cleanLocalJson(text);
- if(!clean)throw new Error('Qwen respondió sin un JSON utilizable.');
- let parsed;
- try{parsed=JSON.parse(clean)}
- catch{throw new Error('Qwen respondió, pero el JSON no fue válido.')}
+ if(!text.trim())throw new Error('Qwen respondió sin contenido.');
+ const parsed=parseQwenFieldResponse(text);
+ if(!parsed)throw new Error('Qwen respondió, pero no se pudo interpretar el contenido.');
  return mergeQwenNarrative(analysis,parsed);
 }
 function generateLocalInterpretation(analysis){
