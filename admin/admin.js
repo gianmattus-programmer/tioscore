@@ -793,44 +793,57 @@ function buildSentinelDeepAnalysis(text='',analysisMode='deep'){
  };
 }
 
-function parseSentinelReport(source,meta={}){
- const text=String(source||'').replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
+function parseCreditReport(source,meta={}){
+ const rawSource=String(source||'');
+ const profile=meta.profile||detectReportProfile(rawSource);
+ const text=rawSource.replace(/--- PÁGINA \d+ · [^-]+ ---/g,' ').replace(/\s+/g,' ').trim();
  const analysisMode=meta.analysisMode==='fast'?'fast':'deep';
- const deepAnalysis=buildSentinelDeepAnalysis(text,analysisMode);
+ let deepAnalysis=profile.family==='sentinel'?buildSentinelDeepAnalysis(text,analysisMode):null;
  const historySample=deepAnalysis?sampleHistoricalRows(collapseHistoryMonthly(deepAnalysis.history||[]),24):[];
+ const genericPairs=extractGenericPairs(rawSource);
  const raw={};
  const add=(label,value)=>{if(value!==''&&value!=null&&!/^(?:no informado|no registrado)$/i.test(String(value).trim()))raw[label]=String(value).trim()};
- const name=extractPersonName(text);
- const dni=reportCapture(text,[/\bDNI\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{8})\b/i,/\b(\d{8})\b(?=.{0,25}\bDNI\b)/i]);
+ const name=extractPersonName(text,profile);
+ const dni=reportCapture(text,[
+  /\bDNI\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{8})\b/i,
+  /(?:documento|doc\.?|n[úu]mero de documento)\s*[:\-]?\s*(\d{8})\b/i,
+  /\b(\d{8})\b(?=.{0,25}\bDNI\b)/i
+ ]);
  const ruc=reportCapture(text,[/\bRUC\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{11})\b/i]);
+ const ce=reportCapture(text,[/\b(?:CE|C\.E\.|CARN[EÉ]\s+DE\s+EXTRANJER[IÍ]A)\s*(?:N[°ºo.]*)?\s*[:\-]?\s*([A-Z0-9]{8,12})\b/i]);
  const scoreRaw=reportCapture(text,[
-  /(?:score\s*(?:experian)?|puntaje(?:\s+experian)?)\s*[:\-]?\s*(\d{1,3})\b/i,
-  /\bexperian\b.{0,35}\b(\d{3})\b/i
+  /(?:score(?:\s+crediticio|\s+experian)?|puntaje(?:\s+crediticio|\s+experian)?|rating)\s*[:\-]?\s*(\d{1,3})\b/i,
+  /\bexperian\b.{0,35}\b(\d{3})\b/i,
+  /(?:calificaci[oó]n\s+crediticia).{0,30}?\b(\d{3})\b/i
  ]);
  const score=Math.max(0,Math.min(999,Number(scoreRaw)||0));
  const scoreLabel=reportCapture(text,[/(?:nivel\s+del\s+score|puntaje)\s*[:\-]?\s*(puntaje\s+(?:muy\s+)?(?:bajo|medio|bueno|excelente)|(?:muy\s+)?(?:bajo|medio|bueno|excelente))/i]);
  const creation=reportCapture(text,[/(?:fecha(?: y hora)? de creaci[oó]n|creationDateTime)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)/i]);
  const updated=reportCapture(text,[/(?:informaci[oó]n actualizada(?: al)?|informationUpdated)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i,/(?:informaci[oó]n actualizada(?: al)?)[^\d]{0,10}(\d{1,2}\s+de\s+[A-Za-zÁÉÍÓÚáéíóú]+\s+del?\s+\d{4})/i]);
- const documentType=reportCapture(text,[/(?:tipo de documento|documentType)\s*[:\-]?\s*(DNI|CE|RUC|PASAPORTE)/i])||(dni?'DNI':ruc?'RUC':'');
+ const documentType=reportCapture(text,[/(?:tipo de documento|documentType)\s*[:\-]?\s*(DNI|CE|C\.E\.|RUC|PASAPORTE)/i])||(dni?'DNI':ruc?'RUC':ce?'CE':'');
  const banc=reportCapture(text,[/bancarizad[oa]\s*[:\-]?\s*(S[IÍ]|NO)\b/i]);
- const capacity=reportCapture(text,[/(?:capacidad(?: de)? pago(?: mensual)?|capacityOfMonthlyPayment)\s*[:\-]?\s*((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i,/(?:capacidad(?: de)? pago(?: mensual)?).{0,240}?((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i]);
+ const capacity=reportCapture(text,[/(?:capacidad(?: de)? pago(?: mensual)?|capacityOfMonthlyPayment)\s*[:\-]?\s*((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i,/(?:capacidad(?: de)? pago(?: mensual)?).{0,240}?((?:S\/\s*)?[\d.,]+\s*(?:a|-|hasta)\s*(?:S\/\s*)?[\d.,]+)/i,/(?:capacidad(?: de)? pago|cuota disponible)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i]);
  const quickDebt=reportCapture(text,[
   /(?:deuda vigente\s*(?:·|-)?\s*consulta r[aá]pida|currentDebtQuickQuery)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
+  /(?:deuda actual|deuda total|saldo total|saldo vigente|total deuda)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
   /Consulta R[aá]pida.{0,700}?\b([\d]{1,3}(?:,[\d]{3})*\.\d{2})\b/i
  ]);
  const currentDebt=reportCapture(text,[
   /(?:deuda vigente\s*(?:SBS\s*\/?\s*Microfinanzas)?|currentDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
+  /(?:saldo vigente|deuda directa|deuda financiera|total vigente)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
   /Posici[oó]n Hist[oó]rica.{0,900}?\b\d{2}\/\d{2}\/\d{4}\s+\d+(?:\.\d+)?\s+\d+\s+([\d]{1,3}(?:,[\d]{3})*\.\d{2})\b/i
  ]);
  const overdueDebt=reportCapture(text,[
-  /(?:deuda vencida\s*(?:SBS\s*\/?\s*Microfinanzas)?|overdueDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i
+  /(?:deuda vencida\s*(?:SBS\s*\/?\s*Microfinanzas)?|overdueDebtSBSMicrofinance)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
+  /(?:deuda atrasada|saldo vencido|mora total|total vencido|monto vencido)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i
  ]);
  const overdueDocs=reportCapture(text,[
   /(?:monto(?: de)? documentos vencidos|overdueDocumentAmount)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
+  /(?:documentos impagos|obligaciones impagas|documentos protestados|cuentas impagas)\s*[:\-]?\s*(S\/\s*[\d.,]+)/i,
   /Documentos Impagos.{0,140}?\b([\d]{1,3}(?:,[\d]{3})*\.\d{2})\b/i
  ]);
  const overdueDays=reportCapture(text,[
-  /(?:d[ií]as de vencimiento(?: del documento)?|overdueDocumentDays)\s*[:\-]?\s*(\d{1,4})/i,
+  /(?:d[ií]as de vencimiento(?: del documento)?|d[ií]as de atraso|d[ií]as en mora|overdueDocumentDays)\s*[:\-]?\s*(\d{1,4})/i,
   /Documentos Impagos.{0,220}?\b[\d]{1,3}(?:,[\d]{3})*\.\d{2}\s+(?:D[ií]as\s+Venc\.?\s*)?(\d{1,4})\b/i
  ]);
  const bcpDays=reportCapture(text,[/(?:d[ií]as de atraso visibles? en BCP|visibleBCPOverdueDays)\s*[:\-]?\s*(\d{1,4})/i]);
@@ -849,7 +862,7 @@ function parseSentinelReport(source,meta={}){
 
  add('Nombre',name?firstName(name):'');
  add('Tipo de documento',documentType);
- add('Documento',protectedDocument(dni||ruc));
+ add('Documento',protectedDocument(dni||ruc||ce));
  add('Últimos dígitos del RUC',ruc?ruc.slice(-2):'');
  add('Fecha y hora de creación',creation);
  add('Información actualizada al',updated);
@@ -884,7 +897,7 @@ function parseSentinelReport(source,meta={}){
  }
 
  let points=0;
- if(/\bsentinel\b/i.test(text))points+=10;
+ if(profile.family!=='generic')points+=Math.min(10,Math.round(profile.confidence/10));
  if(score)points+=25;
  if(dni||ruc)points+=10;
  if(name)points+=7;
@@ -901,6 +914,13 @@ function parseSentinelReport(source,meta={}){
  const current=reportMoneyNumber(currentDebt||quickDebt);
  const overdue=reportMoneyNumber(overdueDebt);
  const docs=reportMoneyNumber(overdueDocs);
+ if(analysisMode==='deep'&&!deepAnalysis){
+  deepAnalysis=buildUniversalDeepAnalysis({
+   current:current||0,overdue:overdue||0,docs:docs||0,
+   days:Math.max(Number(overdueDays)||0,Number(bcpDays)||0),
+   institutions,profile
+  });
+ }
  const debtComposition=[];
  if(current!=null&&current>0)debtComposition.push({label:'Deuda vigente',value:current});
  if(overdue!=null&&overdue>0)debtComposition.push({label:'Deuda vencida SBS / Microfinanzas',value:overdue});
@@ -922,6 +942,12 @@ function parseSentinelReport(source,meta={}){
  const reportSections=[];
  const financialItems=toItems(financialLabels);if(financialItems.length)reportSections.push({title:'Situación financiera',items:financialItems});
  const taxItems=toItems(taxLabels);if(taxItems.length)reportSections.push({title:'Información tributaria y comercial',items:taxItems});
+ const knownValues=new Set(Object.values(raw).map(v=>String(v).trim().toLowerCase()));
+ const genericItems=genericPairs
+  .filter(p=>!knownValues.has(String(p.value).trim().toLowerCase()))
+  .filter(p=>!/apellido/i.test(p.label))
+  .slice(0,14);
+ if(genericItems.length)reportSections.push({title:'Campos adicionales detectados',items:genericItems});
  if(deepAnalysis){
   const histItems=[
    {label:'Observaciones históricas',value:String(deepAnalysis.observations||0)},
@@ -956,8 +982,8 @@ function parseSentinelReport(source,meta={}){
  const overdueShare=(sumSbs+sumOther)>0?[{label:'Vencidos + SBS',value:sumSbs},{label:'Otros + Doc. impagos',value:sumOther}]:[];
  const periodCovered=deepAnalysis?.history?.length?[deepAnalysis.history.at(-1)?.date,deepAnalysis.latestDate].filter(Boolean).join(' → '):'';
  const analysis={
-  sourceReport:{provider:/\bsentinel\b/i.test(text)?'Sentinel':/\bexperian\b/i.test(text)?'Experian':'Reporte detectado',type:'Reporte crediticio',reportDate:updated||creation||'',periodCovered,sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local',analysisMode},
-  client:{name:firstName(name||'Cliente'),document:protectedDocument(dni||ruc)||'Documento protegido',age:'',reportDate:updated||creation||'',entities:institutions.join(' · ')},
+  sourceReport:{provider:profile.provider,type:'Reporte crediticio',template:profile.template,profileFamily:profile.family,profileConfidence:profile.confidence,reportDate:updated||creation||'',periodCovered,sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local',analysisMode},
+  client:{name:firstName(name||'Cliente'),document:protectedDocument(dni||ruc||ce)||'Documento protegido',age:'',reportDate:updated||creation||'',entities:institutions.join(' · ')},
   score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,deepAnalysis,
   metrics,debtSeries,debtComposition,monthlyBehavior,entities,obligations,inquiries:[],raw,reportSections,
   reportCharts:{noteEvolution,classificationHistory:[],overdueByType,overdueShare,currentVsOverdue,institutionShare:[]}
@@ -1330,7 +1356,7 @@ async function processPdf(file,{background=false}={}){
   if(extracted.text.length<100)throw new Error('No se logró obtener suficiente contenido legible del reporte.');
 
   setReportReadProgress(96);
-  const parsed=parseSentinelReport(extracted.text,{
+  const parsed=parseCreditReport(extracted.text,{
    totalPages:extracted.totalPages,
    digitalPages:extracted.digitalPages,
    visualPages:extracted.visualPages,
