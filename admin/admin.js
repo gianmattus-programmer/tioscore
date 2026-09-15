@@ -497,18 +497,18 @@ function extractGenericPairs(source=''){
  }
  return pairs;
 }
-function buildUniversalDeepAnalysis({current=0,overdue=0,docs=0,days=0,institutions=[],profile=null}={}){
+function buildUniversalDeepAnalysis({current=null,overdue=null,docs=null,days=null,institutions=[],profile=null}={}){
  const signals=[];
- if(overdue>0)signals.push({level:'bad',title:'Deuda vencida detectada',text:'El reporte registra '+reportMoney(overdue)+' como deuda vencida.'});
- if(docs>0)signals.push({level:'bad',title:'Documentos impagos o vencidos',text:'Se identifican '+reportMoney(docs)+' en documentos pendientes.'});
- if(days>0)signals.push({level:'warn',title:'Atraso identificado',text:'El mayor atraso extraído es de '+days+' días.'});
- if(current>0&&overdue===0&&docs===0)signals.push({level:'good',title:'Sin vencidos explícitos en los campos detectados',text:'Se identificó deuda vigente, pero no un monto vencido explícito en esta estructura.'});
- if(!signals.length)signals.push({level:'warn',title:'Estructura sin historial comparable',text:'Este reporte no expone una serie histórica compatible; se analiza con los campos disponibles sin asumir información faltante.'});
+ if(overdue!=null&&overdue>0)signals.push({level:'bad',title:'Deuda vencida detectada',text:'El reporte registra '+reportMoney(overdue)+' como deuda vencida.'});
+ if(docs!=null&&docs>0)signals.push({level:'bad',title:'Documentos impagos o vencidos',text:'Se identifican '+reportMoney(docs)+' en documentos pendientes.'});
+ if(days!=null&&days>0)signals.push({level:'warn',title:'Atraso identificado',text:'El mayor atraso extraído es de '+days+' días.'});
+ if(current!=null&&current===0)signals.push({level:'good',title:'Sin deuda vigente registrada',text:'El campo de deuda actual del reporte figura en cero.'});
+ else if(current!=null&&current>0&&overdue===0&&docs===0)signals.push({level:'good',title:'Sin vencidos explícitos en los campos detectados',text:'Se identificó deuda vigente, pero los campos vencidos detectados figuran en cero.'});
  return {
   mode:'deep',generic:true,observations:0,
-  currentFinancialDebt:current||null,currentOverdueSbs:overdue||0,currentUnpaidDocs:docs||0,
-  creditor:'',creditorDays:days||0,peakDebt:0,peakDebtDate:'',peakOverdue:0,peakOverdueDate:'',
-  debtReductionFromPeak:null,redPeriods:0,yellowPeriods:0,greenPeriods:0,
+  currentFinancialDebt:current,currentOverdueSbs:overdue,currentUnpaidDocs:docs,
+  creditor:'',creditorDays:days,peakDebt:null,peakDebtDate:'',peakOverdue:null,peakOverdueDate:'',
+  debtReductionFromPeak:null,redPeriods:null,yellowPeriods:null,greenPeriods:null,
   signals,recent:[],history:[],profile:profile?.template||'Estructura adaptable',
   institutions:(institutions||[]).slice(0,12)
  };
@@ -915,10 +915,9 @@ function parseCreditReport(source,meta={}){
  const overdue=reportMoneyNumber(overdueDebt);
  const docs=reportMoneyNumber(overdueDocs);
  if(analysisMode==='deep'&&!deepAnalysis){
+  const genericDays=(overdueDays||bcpDays)?Math.max(Number(overdueDays)||0,Number(bcpDays)||0):null;
   deepAnalysis=buildUniversalDeepAnalysis({
-   current:current||0,overdue:overdue||0,docs:docs||0,
-   days:Math.max(Number(overdueDays)||0,Number(bcpDays)||0),
-   institutions,profile
+   current,overdue,docs,days:genericDays,institutions,profile
   });
  }
  const debtComposition=[];
@@ -926,9 +925,9 @@ function parseCreditReport(source,meta={}){
  if(overdue!=null&&overdue>0)debtComposition.push({label:'Deuda vencida SBS / Microfinanzas',value:overdue});
  if(docs!=null&&docs>0)debtComposition.push({label:'Documentos vencidos',value:docs});
 
- const entities=institutions.map(v=>({name:v,type:'Entidad detectada',product:'',balance:'No informado',status:'No informado',daysPastDue:'',classification:'',limit:'',monthlyPayment:''}));
+ const entities=institutions.map(v=>({name:v,type:'Entidad detectada',product:'',balance:'',status:'Detectada',daysPastDue:'',classification:'',limit:'',monthlyPayment:''}));
  const obligations=[];
- if(current!=null)obligations.push({entity:'Sistema financiero',product:'Deuda vigente',balance:reportMoney(current),status:'Vigente',detail:'Monto global identificado en el reporte'});
+ if(current!=null&&current>0)obligations.push({entity:'Sistema financiero',product:'Deuda vigente',balance:reportMoney(current),status:'Vigente',detail:'Monto global identificado en el reporte'});
  if(overdue!=null&&overdue>0)obligations.push({entity:'Sistema financiero',product:'Deuda vencida',balance:reportMoney(overdue),status:'Vencida',detail:(overdueDays||bcpDays)?'Atraso detectado: '+Math.max(Number(overdueDays)||0,Number(bcpDays)||0)+' días':'Monto vencido identificado'});
  if(docs!=null&&docs>0)obligations.push({entity:'Documentos',product:'Documentos vencidos',balance:reportMoney(docs),status:'Vencida',detail:'Documentos impagos identificados'});
  if(deepAnalysis?.creditor&&deepAnalysis.currentUnpaidDocs>0){
@@ -948,15 +947,14 @@ function parseCreditReport(source,meta={}){
   .filter(p=>!/apellido/i.test(p.label))
   .slice(0,14);
  if(genericItems.length)reportSections.push({title:'Campos adicionales detectados',items:genericItems});
- if(deepAnalysis){
-  const histItems=[
-   {label:'Observaciones históricas',value:String(deepAnalysis.observations||0)},
-   {label:'Pico de deuda',value:deepAnalysis.peakDebt?reportMoney(deepAnalysis.peakDebt)+' · '+deepAnalysis.peakDebtDate:'No determinado'},
-   {label:'Pico de vencido SBS',value:deepAnalysis.peakOverdue?reportMoney(deepAnalysis.peakOverdue)+' · '+deepAnalysis.peakOverdueDate:'S/ 0.00'},
-   {label:'Reducción desde el pico',value:deepAnalysis.debtReductionFromPeak!=null?deepAnalysis.debtReductionFromPeak.toFixed(1)+'%':'No determinada'},
-   {label:'Señales rojas históricas',value:String(deepAnalysis.redPeriods||0)}
-  ];
-  reportSections.push({title:'Lectura histórica profunda',items:histItems});
+ if(deepAnalysis&&!deepAnalysis.generic){
+  const histItems=[];
+  if(deepAnalysis.observations>0)histItems.push({label:'Observaciones históricas',value:String(deepAnalysis.observations)});
+  if(deepAnalysis.peakDebt!=null&&deepAnalysis.peakDebt>0)histItems.push({label:'Pico de deuda',value:reportMoney(deepAnalysis.peakDebt)+(deepAnalysis.peakDebtDate?' · '+deepAnalysis.peakDebtDate:'')});
+  if(deepAnalysis.peakOverdue!=null)histItems.push({label:'Pico de vencido SBS',value:reportMoney(deepAnalysis.peakOverdue)+(deepAnalysis.peakOverdueDate?' · '+deepAnalysis.peakOverdueDate:'')});
+  if(deepAnalysis.debtReductionFromPeak!=null)histItems.push({label:'Reducción desde el pico',value:deepAnalysis.debtReductionFromPeak.toFixed(1)+'%'});
+  if(deepAnalysis.redPeriods!=null)histItems.push({label:'Señales rojas históricas',value:String(deepAnalysis.redPeriods)});
+  if(histItems.length)reportSections.push({title:'Lectura histórica profunda',items:histItems});
  }
 
  const metrics=[];
