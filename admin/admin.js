@@ -790,17 +790,26 @@ function parseHistoricalRowLine(line='',ratingByDate=new Map(),referenceYear){
  if(!dm)return null;
  const date=normalizeHistoryDate(dm[1],referenceYear);
  if(!date)return null;
- const tail=source.slice((dm.index||0)+dm[0].length);
- const rawTokens=tail.match(/\b(?:NOR|CPP|DEF|DUD|PER|SCAL)\b|[-+]?\d[\d,]*(?:\.\d+)?/gi)||[];
- const ratingToken=rawTokens.find(t=>/^(?:NOR|CPP|DEF|DUD|PER|SCAL)$/i.test(t));
- const nums=rawTokens
-  .filter(t=>!/^(?:NOR|CPP|DEF|DUD|PER|SCAL)$/i.test(t))
-  .map(historicalNumberToken)
-  .filter(v=>v!=null);
+ const dateStart=dm.index||0,dateEnd=dateStart+dm[0].length;
+ const before=source.slice(0,dateStart),after=source.slice(dateEnd);
+ const tokenise=part=>{
+  const tokens=String(part).match(/\b(?:NOR|CPP|DEF|DUD|PER|SCAL)\b|[-+]?\d[\d,]*(?:\.\d+)?/gi)||[];
+  return {
+   rating:String(tokens.find(t=>/^(?:NOR|CPP|DEF|DUD|PER|SCAL)$/i.test(t))||'').toUpperCase(),
+   nums:tokens.filter(t=>!/^(?:NOR|CPP|DEF|DUD|PER|SCAL)$/i.test(t)).map(historicalNumberToken).filter(v=>v!=null)
+  };
+ };
+ const aft=tokenise(after),bef=tokenise(before);
+ let nums=aft.nums,rating=aft.rating;
+ // Algunos motores PDF devuelven la tabla visual de derecha a izquierda: cifras ... fecha.
+ if(nums.length<12&&bef.nums.length>=12){
+  nums=[...bef.nums].reverse();
+  rating=rating||bef.rating;
+ }
  if(nums.length<12)return null;
  const signal=nums[0],entities=nums[1],totalDebt=nums[2],normalPct=nums[3];
  if(signal<0||signal>10||entities<0||entities>99||totalDebt<0||normalPct<0||normalPct>100.5)return null;
- const rating=String(ratingToken||ratingByDate.get(date)||'').toUpperCase();
+ rating=String(rating||ratingByDate.get(date)||'').toUpperCase();
  return {
   date,signal,entities,totalDebt,normalPct,rating,
   overdueSbs:Math.max(0,nums[4]||0),
@@ -1190,7 +1199,7 @@ function parseCreditReport(source,meta={}){
  const overdueShare=(sumSbs+sumOther)>0?[{label:'Vencidos + SBS',value:sumSbs},{label:'Otros + Doc. impagos',value:sumOther}]:[];
  const periodCovered=financialHistory.length?[financialHistory.at(-1)?.date,financialHistory[0]?.date].filter(Boolean).join(' → '):'';
  const analysis={
-  sourceReport:{provider:profile.provider,type:'Reporte crediticio',template:profile.template,profileFamily:profile.family,profileConfidence:profile.confidence,reportDate:updated||creation||'',periodCovered,sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local',analysisMode},
+  sourceReport:{provider:profile.provider,type:'Reporte crediticio',template:profile.template,profileFamily:profile.family,profileConfidence:profile.confidence,hasHistoricalSection:Boolean(profile.features?.history||/posici[oó]n hist[oó]rica|detalle variaci[oó]n posici[oó]n hist[oó]rica/i.test(rawSource)),reportDate:updated||creation||'',periodCovered,sectionsDetected:reportSections.length,sectionsExpected:reportSections.length,parserMode:'local',analysisMode},
   client:{name:firstName(name||'Cliente'),document:protectedDocument(dni||ruc||ce)||'Documento protegido',age:'',reportDate:updated||creation||'',entities:institutions.join(' · ')},
   score,risk:parserRisk(score),confidence:parserConfidence,debtChange:0,deepAnalysis,financialHistory,creditLines,
   metrics,debtSeries,debtComposition,monthlyBehavior,entities,obligations,inquiries:[],raw,reportSections,
@@ -1338,7 +1347,12 @@ function cpuQwenRequest(type,payload={},timeoutMs=600000){
  return new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>{
    cpuQwenPending.delete(id);
-   reject(new Error('Qwen local superó el tiempo máximo de espera.'));
+   try{cpuQwenWorker?.terminate()}catch{}
+   cpuQwenWorker=null;
+   localAiEngine=null;
+   localAiPromise=null;
+   localAiRuntime='';
+   reject(new Error('Qwen local tardó demasiado; el análisis financiero ya está disponible y la IA se reiniciará en la siguiente consulta.'));
   },timeoutMs);
   cpuQwenPending.set(id,{resolve,reject,timer});
   worker.postMessage({id,type,...payload});
@@ -1457,8 +1471,9 @@ async function runLocalInterpretation(analysis){
  const format='Responde usando exactamente estas seis etiquetas, cada una iniciando una línea: SCORE:, RESUMEN:, PRIORIDAD:, CIERRE:, SEGUIMIENTO:, PREGUNTA:. No uses JSON, llaves, listas ni bloques de código.';
  const user=format+' '+focus+' Sé concreto. DATOS: '+payload;
  const messages=[{role:'system',content:system},{role:'user',content:user}];
- const maxOut=deep?180:120;
- const out=await cpuQwenRequest('generate',{messages,maxNewTokens:maxOut},deep?240000:150000);
+ const slow=localAiRuntime!=='webgpu';
+ const maxOut=deep?(slow?90:150):(slow?70:105);
+ const out=await cpuQwenRequest('generate',{messages,maxNewTokens:maxOut},deep?(slow?180000:150000):(slow?120000:90000));
  if(out?.backend)localAiRuntime=String(out.backend);
  const text=String(out?.text||'');
  if(!text.trim())throw new Error('Qwen respondió sin contenido.');
@@ -1552,10 +1567,15 @@ async function processPdf(file,{background=false}={}){
    local.sourceReport.parserMode=parsed.parserConfidence>=70
     ?'Parser local · reglas rápidas'
     :'Parser/OCR parcial · reglas rápidas';
-   setLocalAiStatus('Reglas activas · Qwen no disponible');
-   setInlineAiMessage(aiErr,'error');
-   const self=$('#aiSelfTest');if(self)self.textContent='Falló · '+aiErr.slice(0,120);
-   if(state.analysis===local){renderInterpretationEngine(local);setWorkspaceReadProgress(100);setAiWorkStatus('fallback','Reglas locales',true);$('#analysisMeta').textContent='Reporte leído 100% · IA local no disponible';}
+   const timedOut=/tard[oó] demasiado|tiempo m[aá]ximo/i.test(aiErr);
+   setLocalAiStatus(timedOut?'Análisis listo · Qwen reiniciará':'Reglas activas · Qwen no disponible');
+   setInlineAiMessage(aiErr,timedOut?'info':'error');
+   const self=$('#aiSelfTest');if(self)self.textContent=(timedOut?'Reinicio pendiente · ':'Falló · ')+aiErr.slice(0,120);
+   if(state.analysis===local){
+    renderInterpretationEngine(local);setWorkspaceReadProgress(100);
+    setAiWorkStatus('fallback',timedOut?'Análisis listo':'Reglas locales',true);
+    $('#analysisMeta').textContent=timedOut?'Reporte leído 100% · análisis completo · Qwen reiniciará':'Reporte leído 100% · IA local no disponible';
+   }
    persistHistoryAnalysis(analysisHistoryId,local).catch(()=>{});
   });
  }catch(err){
@@ -2475,33 +2495,46 @@ function renderFiveYearTrend(data){
 }
 function renderFiveYearFinancial(x){
  const section=$('#financialFiveYearSection');if(!section)return;
- const deepMode=x.sourceReport?.analysisMode==='deep';
  const history=Array.isArray(x.financialHistory)&&x.financialHistory.length?x.financialHistory:(Array.isArray(x.deepAnalysis?.history)?x.deepAnalysis.history:[]);
  const referenceYear=reportReferenceYear(x);
  const data=fiveYearMonthlyHistory(history,referenceYear);
- const hasRows=data.years.length>0&&data.months.some(m=>m.row);
+ const hasRows=data.months.some(m=>m.row);
+ const detected=Boolean(x.sourceReport?.hasHistoricalSection||hasRows);
  const coverageEl=$('#fiveYearCoverage');
- if(coverageEl){
-  const available=data.months.filter(m=>m.row);
-  if(available.length){
-   const first=available[0],last=available[available.length-1];
-   coverageEl.textContent='Cobertura real del PDF: '+String(first.month).padStart(2,'0')+'/'+first.year+' → '+String(last.month).padStart(2,'0')+'/'+last.year+'. Los demás meses se muestran vacíos porque el reporte no los contiene.';
-  }else coverageEl.textContent='';
- }
- toggleBlock('#financialFiveYearSection',hasRows);
- if(!hasRows){const k=$('#fiveYearKpis'),m=$('#fiveYearMatrix'),s=$('#fiveYearTrendChart');if(k)k.innerHTML='';if(m)m.innerHTML='';if(s)s.innerHTML='';return;}
  const kbox=$('#fiveYearKpis'),matrix=$('#fiveYearMatrix'),svg=$('#fiveYearTrendChart');
  const trendCard=svg?.closest('.financial-trend-card');
  const matrixCard=matrix?.closest('.financial-matrix-card');
 
- if(trendCard)trendCard.classList.remove('hidden');
- if(matrixCard)matrixCard.classList.remove('hidden');
- const kpis=fiveYearKpis(data);
- if(kbox)kbox.innerHTML=kpis.map(k=>'<div class="five-year-kpi '+esc(k.className||'')+'"><small>'+esc(k.label)+'</small><b>'+esc(k.value)+'</b></div>').join('');
- renderFiveYearTrend(data);
- renderFiveYearMatrix(data);
-}
+ toggleBlock('#financialFiveYearSection',detected);
+ if(!detected)return;
 
+ if(coverageEl){
+  const available=data.months.filter(m=>m.row);
+  if(available.length){
+   const first=available[0],last=available[available.length-1];
+   coverageEl.textContent='Meses recuperados del PDF: '+available.length+' · '+String(first.month).padStart(2,'0')+'/'+first.year+' → '+String(last.month).padStart(2,'0')+'/'+last.year+'. Los meses sin registro quedan vacíos.';
+  }else{
+   coverageEl.textContent='El PDF contiene Posición Histórica. En esta lectura aún no se estructuraron filas mensuales; los meses permanecen vacíos, sin inventar datos.';
+  }
+ }
+
+ if(kbox){
+  if(hasRows){
+   const kpis=fiveYearKpis(data);
+   kbox.innerHTML=kpis.map(k=>'<div class="five-year-kpi '+esc(k.className||'')+'"><small>'+esc(k.label)+'</small><b>'+esc(k.value)+'</b></div>').join('');
+  }else kbox.innerHTML='';
+ }
+
+ // La matriz ENE–DIC siempre se muestra si el PDF declara historial.
+ if(matrixCard)matrixCard.classList.remove('hidden');
+ renderFiveYearMatrix(data);
+
+ // El gráfico de líneas solo aparece cuando existen al menos dos puntos reales.
+ const realMonths=data.months.filter(m=>m.row);
+ if(trendCard)trendCard.classList.toggle('hidden',realMonths.length<2);
+ if(realMonths.length>=2)renderFiveYearTrend(data);
+ else if(svg)svg.innerHTML='';
+}
 function renderReportCharts(x){
  renderFiveYearFinancial(x);
  const rc=x.reportCharts||{},fb=fallbackCharts(x);
