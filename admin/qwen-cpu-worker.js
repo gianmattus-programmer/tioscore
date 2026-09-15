@@ -7,6 +7,7 @@ env.useWasmCache=true;
 
 let generator=null;
 let generatorPromise=null;
+let backend="";
 const MODEL_ID="onnx-community/Qwen2.5-0.5B-Instruct";
 
 function send(id,type,data={}){self.postMessage({id,type,...data})}
@@ -24,28 +25,42 @@ function generatedText(out){
   }
   return String(g||row?.text||"").trim();
 }
+async function loadPipeline(id,device){
+  send(id,"status",{message:device==="webgpu"?"Preparando Qwen por WebGPU…":"Preparando Qwen por CPU/WASM…"});
+  return pipeline("text-generation",MODEL_ID,{
+    dtype:"q4",
+    device,
+    progress_callback:p=>{
+      const pct=progressToPct(p);
+      const label=String(p?.file||p?.status||"Cargando modelo");
+      send(id,"progress",{progress:pct,message:label,backend:device});
+    }
+  });
+}
 async function ensureGenerator(id){
   if(generator)return generator;
   if(generatorPromise)return generatorPromise;
-  send(id,"status",{message:"Preparando Qwen local estable…"});
-  generatorPromise=pipeline("text-generation",MODEL_ID,{
-    dtype:"q4",
-    progress_callback:p=>{
-      const pct=progressToPct(p);
-      const label=String(p?.file||p?.status||"Descargando modelo");
-      send(id,"progress",{progress:pct,message:label});
+  generatorPromise=(async()=>{
+    if("gpu" in self.navigator){
+      try{
+        const pipe=await loadPipeline(id,"webgpu");
+        generator=pipe;backend="webgpu";
+        return pipe;
+      }catch(err){
+        send(id,"status",{message:"WebGPU no pudo iniciar. Cambiando a CPU/WASM…"});
+      }
     }
-  }).then(pipe=>{
-    generator=pipe;
+    const pipe=await loadPipeline(id,"wasm");
+    generator=pipe;backend="wasm";
     return pipe;
-  }).catch(err=>{
+  })().catch(err=>{
     generatorPromise=null;
     throw err;
   });
   return generatorPromise;
 }
 self.onmessage=async e=>{
-  const {id,type,messages,maxNewTokens=420}=e.data||{};
+  const {id,type,messages,maxNewTokens=180}=e.data||{};
   if(!id)return;
   try{
     const gen=await ensureGenerator(id);
@@ -53,20 +68,20 @@ self.onmessage=async e=>{
       const out=await gen([{role:"user",content:"Responde solo: OK"}],{max_new_tokens:5,do_sample:false});
       const text=generatedText(out);
       if(!text)throw new Error("Qwen local cargó pero no generó texto.");
-      send(id,"ready",{model:MODEL_ID,probe:text.slice(0,30)});
+      send(id,"ready",{model:MODEL_ID,probe:text.slice(0,30),backend});
       return;
     }
     if(type==="generate"){
       const out=await gen(messages||[],{
         max_new_tokens:maxNewTokens,
         do_sample:false,
-        repetition_penalty:1.08
+        repetition_penalty:1.06
       });
       const text=generatedText(out);
       if(!text)throw new Error("Qwen local no devolvió contenido.");
-      send(id,"result",{text,model:MODEL_ID});
+      send(id,"result",{text,model:MODEL_ID,backend});
     }
   }catch(err){
-    send(id,"error",{message:String(err?.message||err||"Error Qwen local")});
+    send(id,"error",{message:String(err?.message||err||"Error Qwen local"),backend});
   }
 };
