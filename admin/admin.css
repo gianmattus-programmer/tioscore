@@ -1122,3 +1122,7 @@ html,body{max-width:100%;overflow-x:hidden}
 /* Historial financiero: fallback compacto y de ancho completo */
 .five-year-kpis>.five-year-empty{grid-column:1/-1;width:100%;box-sizing:border-box}
 .five-year-matrix>.deep-mode-empty{grid-column:1/-1;width:100%;box-sizing:border-box}
+
+
+/* ===== Cobertura real del historial financiero ===== */
+#fiveYearCoverage{display:block;margin-top:4px;font-weight:700;color:var(--muted);font-size:.62rem;line-height:1.45}
