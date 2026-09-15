@@ -2424,10 +2424,15 @@ function renderReportCharts(x){
 }
 function renderCoverage(x){
  const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;
+ const historyRows=Array.isArray(x.deepAnalysis?.history)?x.deepAnalysis.history.length:0;
+ const historyMonths=historyRows?collapseHistoryMonthly(x.deepAnalysis.history).length:0;
  const rows=[
   ['Fuente detectada',s.provider],
   ['Tipo de reporte',s.type],
   ['Estructura detectada',s.template],
+  ['Score detectado',Number(x.score)>0?String(x.score):''],
+  ['Filas históricas leídas',historyRows?String(historyRows):''],
+  ['Meses históricos recuperados',historyMonths?String(historyMonths):''],
   ['Método de lectura',s.extractionMode],
   ['Páginas del reporte',s.totalPages],
   ['Páginas leídas visualmente',s.visualPages!=null?String(s.visualPages):''],
