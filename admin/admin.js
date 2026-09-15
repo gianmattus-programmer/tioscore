@@ -1799,6 +1799,20 @@ function renderScoreGauge(score){
  return info;
 }
 
+
+function isMeaningfulDisplayValue(value){
+ if(value===0)return true;
+ if(value==null)return false;
+ const s=String(value).trim();
+ if(!s)return false;
+ return !/^(?:no informado|no determinado|no determinada|no disponible|no registrado|n\/a|null|undefined|—)$/i.test(s);
+}
+function toggleBlock(selector,show){
+ const el=$(selector);if(el)el.classList.toggle('hidden',!show);
+}
+function cleanDisplayItems(items=[]){
+ return items.filter(x=>x&&isMeaningfulDisplayValue(x.value));
+}
 function normalize(a){
  const x=a||{};x.sourceReport=x.sourceReport||{};x.client=x.client||{};x.alerts=Array.isArray(x.alerts)?x.alerts:[];x.tags=Array.isArray(x.tags)?x.tags:[];
  x.metrics=Array.isArray(x.metrics)?x.metrics:[];x.debtSeries=Array.isArray(x.debtSeries)?x.debtSeries:[];x.debtComposition=Array.isArray(x.debtComposition)?x.debtComposition:[];
@@ -1834,47 +1848,78 @@ function renderDeepAnalysis(deep,mode='fast'){
  if(badge)badge.textContent=mode==='deep'?'Profundo':'Rápido';
  if(!grid||!signals||!recent)return;
  if(mode!=='deep'||!deep){
-  grid.innerHTML='<div class="deep-mode-empty">Modo rápido activo. Cambia a <b>Profundo</b> antes de cargar el PDF para analizar evolución histórica, picos de deuda y señales pasadas.</div>';
-  signals.innerHTML='';recent.innerHTML='';return;
+  toggleBlock('.deep-analysis-block',false);
+  grid.innerHTML='';signals.innerHTML='';recent.innerHTML='';
+  return;
  }
- const stat=(label,value,cls='')=>'<div class="deep-stat '+cls+'"><small>'+esc(label)+'</small><b>'+esc(value)+'</b></div>';
- const reduction=deep.debtReductionFromPeak;
- grid.innerHTML=[
-  stat('Registros históricos',String(deep.observations||0)),
-  stat('Deuda financiera actual',deep.currentFinancialDebt!=null?reportMoney(deep.currentFinancialDebt):'No determinada'),
-  stat('Pico histórico',deep.peakDebt?reportMoney(deep.peakDebt)+' · '+deep.peakDebtDate:'No determinado','warn'),
-  stat('Reducción desde pico',reduction!=null?Number(reduction).toFixed(1)+'%':'No determinada',reduction>0?'good':''),
-  stat('Vencido SBS actual',deep.currentOverdueSbs!=null?reportMoney(deep.currentOverdueSbs):'No determinado',Number(deep.currentOverdueSbs)>0?'bad':'good'),
-  stat('Documentos impagos',deep.currentUnpaidDocs?reportMoney(deep.currentUnpaidDocs):'S/ 0.00',Number(deep.currentUnpaidDocs)>0?'bad':'good')
- ].join('');
- signals.innerHTML=(deep.signals||[]).map(s=>'<div class="deep-signal '+esc(s.level||'warn')+'"><div><b>'+esc(s.title||'Señal')+'</b><p>'+esc(s.text||'')+'</p></div></div>').join('')||'<div class="deep-mode-empty">Sin señales históricas suficientes.</div>';
+ const stats=[];
+ const stat=(label,value,cls='')=>stats.push('<div class="deep-stat '+cls+'"><small>'+esc(label)+'</small><b>'+esc(value)+'</b></div>');
+ if(deep.observations>0)stat('Registros históricos',String(deep.observations));
+ if(deep.currentFinancialDebt!=null)stat('Deuda financiera actual',reportMoney(deep.currentFinancialDebt),Number(deep.currentFinancialDebt)>0?'':'good');
+ if(deep.peakDebt!=null&&deep.peakDebt>0)stat('Pico histórico',reportMoney(deep.peakDebt)+(deep.peakDebtDate?' · '+deep.peakDebtDate:''),'warn');
+ if(deep.debtReductionFromPeak!=null)stat('Reducción desde pico',Number(deep.debtReductionFromPeak).toFixed(1)+'%',Number(deep.debtReductionFromPeak)>0?'good':'');
+ if(deep.currentOverdueSbs!=null)stat('Vencido SBS actual',reportMoney(deep.currentOverdueSbs),Number(deep.currentOverdueSbs)>0?'bad':'good');
+ if(deep.currentUnpaidDocs!=null)stat('Documentos impagos',reportMoney(deep.currentUnpaidDocs),Number(deep.currentUnpaidDocs)>0?'bad':'good');
+ grid.innerHTML=stats.join('');
+ signals.innerHTML=(deep.signals||[]).map(s=>'<div class="deep-signal '+esc(s.level||'warn')+'"><div><b>'+esc(s.title||'Señal')+'</b><p>'+esc(s.text||'')+'</p></div></div>').join('');
  const rows=(deep.recent||[]).slice(0,8);
  recent.innerHTML=rows.length?'<div class="deep-history-row head"><span>Fecha</span><span>Deuda</span><span>Vencidos</span><span>Semáforo</span></div>'+rows.map(r=>'<div class="deep-history-row"><span>'+esc(r.date)+'</span><b>'+esc(reportMoney(r.totalDebt))+'</b><span>'+esc(reportMoney((r.overdueSbs||0)+(r.unpaidDocs||0)))+'</span><span>'+esc(r.signal>2?'Rojo':r.signal>=.001?'Amarillo':'Verde')+'</span></div>').join(''):'';
+ toggleBlock('.deep-analysis-block',Boolean(stats.length||signals.innerHTML||rows.length));
 }
 function updateCheck(){const all=$$('#checklist input'),done=all.filter(x=>x.checked).length;$('#checkProgress').textContent=done+' / '+all.length}
 function renderData(data){
- const rows=Object.entries(data).filter(([k])=>!isSurnameLabel(k)).map(([k,v])=>{
-  const safe=clientSafeValue(k,v);
-  return '<div class="data-item" data-key="'+esc(k)+'"><span>'+esc(labelEs(k))+'</span><b>'+esc(safe||'No informado')+'</b></div>';
- });
- $('#detectedData').innerHTML=rows.join('')||'<div class="empty-line">No se detectaron campos.</div>';
+ const rows=Object.entries(data)
+  .filter(([k,v])=>!isSurnameLabel(k)&&isMeaningfulDisplayValue(v))
+  .map(([k,v])=>{
+   const safe=clientSafeValue(k,v);
+   if(!isMeaningfulDisplayValue(safe))return '';
+   return '<div class="data-item" data-key="'+esc(k)+'"><span>'+esc(labelEs(k))+'</span><b>'+esc(safe)+'</b></div>';
+  }).filter(Boolean);
+ $('#detectedData').innerHTML=rows.join('');
 }
 $('#editDataBtn')?.addEventListener('click',()=>{if(!state.analysis)return;state.editing=!state.editing;$('#editDataBtn').textContent=state.editing?'Guardar':'Editar datos';$$('#detectedData .data-item').forEach(el=>{const key=el.dataset.key,b=el.querySelector('b');if(state.editing)b.outerHTML='<input value="'+esc(state.analysis.raw[key])+'">';else{const i=el.querySelector('input');state.analysis.raw[key]=i.value;i.outerHTML='<b>'+esc(i.value)+' *</b>'}})});
-function clsStatus(s=''){s=s.toLowerCase();return /normal|al día|vigente|cancelad/.test(s)?'status-good':/mora|vencid|impag|castig|pérdida|pendiente/.test(s)?'status-bad':'status-warn'}
-function renderEntities(items){$('#entityCount').textContent=items.length+' registros';$('#entitiesTable').innerHTML=items.length?'<div class="table-row head"><span>Entidad / producto</span><span>Saldo</span><span>Estado</span></div>'+items.map(v=>'<div class="table-row"><b>'+esc(v.name)+(v.product?' · '+esc(v.product):'')+'</b><span>'+esc(v.balance||'No informado')+'</span><span class="'+clsStatus(v.status)+'">'+esc(v.status||v.classification||'No informado')+'</span></div>').join(''):'<div class="empty-line" style="padding:10px">No informado en el reporte.</div>'}
-function renderObligations(items){$('#obligationsTable').innerHTML=items.length?'<div class="table-row head"><span>Obligación</span><span>Saldo</span><span>Estado</span></div>'+items.map(v=>'<div class="table-row"><b>'+esc(v.entity)+(v.product?' · '+esc(v.product):'')+'<small style="display:block;color:#667085;font-weight:400">'+esc(v.detail||'')+'</small></b><span>'+esc(v.balance||'—')+'</span><span class="'+clsStatus(v.status)+'">'+esc(v.status||'—')+'</span></div>').join(''):'<div class="empty-line" style="padding:10px">No se detectaron obligaciones detalladas.</div>'}
-function renderInquiries(items){$('#inquiriesList').innerHTML=items.length?items.map(v=>'<div class="timeline-item"><time>'+esc(v.date||'—')+'</time><div><b>'+esc(v.entity||'No informado')+'</b><small>'+esc(v.type||'Consulta')+'</small></div></div>').join(''):'<div class="empty-line">El reporte no informa consultas.</div>'}
-function renderSections(sections){
- const html=sections.map(s=>{
-  const items=(Array.isArray(s.items)?s.items:[]).filter(i=>!isSurnameLabel(i.label)).map(i=>{
-   const safe=clientSafeValue(i.label,i.value);
-   return '<div class="kv"><dt>'+esc(labelEs(i.label))+'</dt><dd>'+esc(safe||'No informado')+'</dd></div>';
-  }).join('');
-  return items?'<div class="report-section"><h4>'+esc(labelEs(s.title||'Sección'))+'</h4><dl>'+items+'</dl></div>':'';
+function clsStatus(s=''){s=s.toLowerCase();return /normal|al día|vigente|cancelad|detectada/.test(s)?'status-good':/mora|vencid|impag|castig|pérdida|pendiente/.test(s)?'status-bad':'status-warn'}
+function renderEntities(items){
+ const clean=(items||[]).filter(v=>v&&isMeaningfulDisplayValue(v.name));
+ $('#entityCount').textContent=clean.length+' registros';
+ toggleBlock('#entitiesSection',clean.length>0);
+ if(!clean.length){$('#entitiesTable').innerHTML='';return}
+ $('#entitiesTable').innerHTML='<div class="table-row head"><span>Entidad / producto</span><span>Saldo</span><span>Estado</span></div>'+clean.map(v=>{
+  const balance=isMeaningfulDisplayValue(v.balance)?esc(v.balance):'';
+  const status=isMeaningfulDisplayValue(v.status)?v.status:isMeaningfulDisplayValue(v.classification)?v.classification:'Detectada';
+  return '<div class="table-row"><b>'+esc(v.name)+(v.product?' · '+esc(v.product):'')+'</b><span>'+balance+'</span><span class="'+clsStatus(status)+'">'+esc(status)+'</span></div>';
  }).join('');
- $('#reportSections').innerHTML=html||'<div class="empty-line">No hay bloques adicionales.</div>';
 }
-function renderMetrics(items){$('#metricsGrid').innerHTML=items.map(m=>'<div class="metric '+(m.danger?'danger':'')+'"><b>'+esc(m.value)+'</b><span>'+esc(m.label)+'</span></div>').join('')||'<div class="empty-line">Sin métricas.</div>'}
+function renderObligations(items){
+ const clean=(items||[]).filter(v=>v&&isMeaningfulDisplayValue(v.entity)&&isMeaningfulDisplayValue(v.balance));
+ toggleBlock('#obligationsSection',clean.length>0);
+ if(!clean.length){$('#obligationsTable').innerHTML='';return}
+ $('#obligationsTable').innerHTML='<div class="table-row head"><span>Obligación</span><span>Saldo</span><span>Estado</span></div>'+clean.map(v=>'<div class="table-row"><b>'+esc(v.entity)+(v.product?' · '+esc(v.product):'')+(v.detail?'<small style="display:block;color:#667085;font-weight:400">'+esc(v.detail)+'</small>':'')+'</b><span>'+esc(v.balance)+'</span><span class="'+clsStatus(v.status||'')+'">'+esc(v.status||'')+'</span></div>').join('');
+}
+function renderInquiries(items){
+ const clean=(items||[]).filter(v=>v&&(isMeaningfulDisplayValue(v.date)||isMeaningfulDisplayValue(v.entity)||isMeaningfulDisplayValue(v.type)));
+ toggleBlock('#inquiriesSection',clean.length>0);
+ if(!clean.length){$('#inquiriesList').innerHTML='';return}
+ $('#inquiriesList').innerHTML=clean.map(v=>'<div class="timeline-item">'+(isMeaningfulDisplayValue(v.date)?'<time>'+esc(v.date)+'</time>':'')+'<div>'+(isMeaningfulDisplayValue(v.entity)?'<b>'+esc(v.entity)+'</b>':'')+(isMeaningfulDisplayValue(v.type)?'<small>'+esc(v.type)+'</small>':'')+'</div></div>').join('');
+}
+function renderSections(sections){
+ const html=(sections||[]).map(s=>{
+  const items=(Array.isArray(s.items)?s.items:[])
+   .filter(i=>!isSurnameLabel(i.label)&&isMeaningfulDisplayValue(i.value))
+   .map(i=>{
+    const safe=clientSafeValue(i.label,i.value);
+    return isMeaningfulDisplayValue(safe)?'<div class="kv"><dt>'+esc(labelEs(i.label))+'</dt><dd>'+esc(safe)+'</dd></div>':'';
+   }).filter(Boolean).join('');
+  return items?'<div class="report-section"><h4>'+esc(labelEs(s.title||'Sección'))+'</h4><dl>'+items+'</dl></div>':'';
+ }).filter(Boolean).join('');
+ toggleBlock('#reportSectionsSection',Boolean(html));
+ $('#reportSections').innerHTML=html;
+}
+function renderMetrics(items){
+ const clean=(items||[]).filter(m=>m&&isMeaningfulDisplayValue(m.value));
+ $('#metricsGrid').innerHTML=clean.map(m=>'<div class="metric '+(m.danger?'danger':'')+'"><b>'+esc(m.value)+'</b><span>'+esc(m.label)+'</span></div>').join('');
+ toggleBlock('.metrics-block',clean.length>0);
+}
 function renderChart(series){
  const svg=$('#debtChart');if(!series.length){svg.innerHTML='<text x="450" y="140" text-anchor="middle" class="chart-label">Sin serie histórica</text>';$('#chartLegend').innerHTML='';return}
  const w=900,h=280,p=38,vals=series.map(v=>Number(v.value)||0),max=Math.max(...vals,1),min=Math.min(...vals,0),span=Math.max(max-min,1),pts=series.map((v,i)=>({x:p+i*((w-p*2)/(series.length-1||1)),y:h-p-((Number(v.value)-min)/span)*(h-p*2),...v}));
