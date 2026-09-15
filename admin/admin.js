@@ -2443,7 +2443,18 @@ function renderFiveYearTrend(data){
    const q={x:xFor(m.year,m.month),y:yFor(value),m,value};
    segment.push(q);
    const rating=financeRating(m.row);
-   const tip=[s.name,m.row.date,reportMoney(value),rating?rating+' · '+financeRatingLabel(rating):''].filter(Boolean).join(' · ');
+   const signal=Number(m.row.signal)>2?'Rojo':Number(m.row.signal)>=.001?'Amarillo':'Verde';
+   const tip=[
+    s.name,
+    m.row.date,
+    reportMoney(value),
+    rating?'Peor calificación: '+rating+' · '+financeRatingLabel(rating):'Semáforo: '+signal,
+    'Deuda total: '+reportMoney(m.row.totalDebt||0),
+    'Deuda vencida: '+reportMoney(m.row.overdueSbs||0),
+    'Doc. impagos: '+reportMoney(m.row.unpaidDocs||0),
+    'Calif. normal: '+Number(m.row.normalPct||0).toFixed(2)+'%',
+    'Entidades: '+String(m.row.entities??'')
+   ].join(' · ');
    points+='<circle class="five-year-point '+s.cls+'" cx="'+q.x+'" cy="'+q.y+'" r="3.5" data-tip="'+esc(tip)+'" data-x="'+q.x+'" data-y="'+q.y+'"/>';
    points+='<circle class="five-year-hit" cx="'+q.x+'" cy="'+q.y+'" r="10" data-tip="'+esc(tip)+'" data-x="'+q.x+'" data-y="'+q.y+'"/>';
   }
