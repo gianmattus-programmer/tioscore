@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#fbfaf7">
   <title>Tío Score · Análisis privado</title>
   <link rel="icon" type="image/webp" href="https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/favicon.webp">
-  <link rel="stylesheet" href="/admin/admin.css?v=20260915-samples2">
+  <link rel="stylesheet" href="/admin/admin.css?v=20260915-columns1">
 </head>
 <body>
   <div id="configGate" class="gate hidden">
@@ -150,10 +150,143 @@
           </div>
 
           <div class="analysis-columns">
-            <!-- IZQUIERDA: lectura, recomendaciones y cierre -->
-            <section class="analysis-pane pane-reading">
+            <!-- IZQUIERDA: todos los datos extraídos del reporte -->
+            <section class="analysis-pane pane-reading pane-data">
               <header class="pane-header">
                 <span class="pane-index">01</span>
+                <div><span class="eyebrow">DATOS DEL REPORTE</span><h2>Información identificada</h2></div>
+                <span class="advisor-badge">SOLO ASESOR</span>
+              </header>
+              <div class="pane-scroll">
+                <section id="detectedDataSection" class="client-section">
+                  <div class="section-title-row"><h3>Datos identificados</h3><small>Extraídos del reporte</small></div>
+                  <div id="detectedData" class="data-list"></div>
+                </section>
+
+                <section id="entitiesSection" class="client-section">
+                  <div class="section-title-row"><h3>Entidades y obligaciones</h3><small id="entityCount">0 registros</small></div>
+                  <div id="entitiesTable" class="formal-table"></div>
+                </section>
+
+                <section id="obligationsSection" class="client-section">
+                  <div class="section-title-row"><h3>Detalle de obligaciones</h3><small>Financieras y comerciales</small></div>
+                  <div id="obligationsTable" class="formal-table"></div>
+                </section>
+
+                <section id="inquiriesSection" class="client-section">
+                  <div class="section-title-row"><h3>Consultas y solicitudes</h3><small>Cuando el reporte las informa</small></div>
+                  <div id="inquiriesList" class="timeline-list"></div>
+                </section>
+
+                <section id="reportSectionsSection" class="client-section">
+                  <div class="section-title-row"><h3>Información adicional del reporte</h3><small>Solo campos presentes en este PDF</small></div>
+                  <div id="reportSections" class="report-sections"></div>
+                </section>
+
+                <section class="pane-block admin-only">
+                  <div class="block-heading"><span>Cobertura de lectura</span></div>
+                  <div id="coverageBox" class="coverage-box"></div>
+                </section>
+              </div>
+            </section>
+
+            <!-- CENTRO: vista cliente + comportamiento financiero -->
+            <section class="analysis-pane pane-client">
+              <header class="pane-header client-header">
+                <span class="pane-index">02</span>
+                <div><span class="eyebrow">VISTA CLIENTE</span><h2>Análisis financiero</h2></div>
+                <span class="client-live-badge">EN VIVO</span>
+              </header>
+              <div class="pane-scroll">
+                <section class="client-identity">
+                  <div id="clientScoreFace" class="score-face face-unrated" aria-label="Estado del score">
+                    <i class="face-eye face-eye-left"></i>
+                    <i class="face-eye face-eye-right"></i>
+                    <i class="face-mouth"></i>
+                  </div>
+                  <div class="identity-copy"><h2 id="clientName">Cliente</h2><p id="clientSubline">Documento protegido · fecha del reporte</p></div>
+                  <div id="riskBadge" class="risk-label">POR REVISAR</div>
+                </section>
+
+                <section class="score-band score-client">
+                  <div class="score-gauge-wrap">
+                    <svg id="scoreGaugeSvg" class="score-gauge-svg" viewBox="0 0 320 190" role="img" aria-label="Medidor de score"></svg>
+                    <div class="score-gauge-center">
+                      <span>Tu Score es</span>
+                      <b id="scoreValue">—</b>
+                      <small>de 999</small>
+                    </div>
+                  </div>
+                  <div class="score-result-copy">
+                    <b id="scoreCategory">Puntaje por revisar</b>
+                    <span id="scoreRange">Score: —</span>
+                  </div>
+                  <p id="scoreDescription"></p>
+                  <div id="debtDelta" class="debt-delta"></div>
+                  <div class="score-scale-legend" aria-label="Rangos del score">
+                    <span><i class="score-c1"></i><b>1–476</b><small>Muy Bajo</small></span>
+                    <span><i class="score-c2"></i><b>477–597</b><small>Bajo</small></span>
+                    <span><i class="score-c3"></i><b>598–721</b><small>Medio</small></span>
+                    <span><i class="score-c4"></i><b>722–876</b><small>Bueno</small></span>
+                    <span><i class="score-c5"></i><b>877–999</b><small>Excelente</small></span>
+                  </div>
+                </section>
+
+                <section class="client-section financial-behavior-title">
+                  <div class="section-title-row"><h3>Comportamiento financiero</h3><small>Evolución y señales del reporte</small></div>
+                </section>
+
+                <section class="pane-block metrics-block">
+                  <div class="block-heading"><span>Cifras clave</span></div>
+                  <div id="metricsGrid" class="metrics-grid"></div>
+                </section>
+
+                <section class="pane-block deep-analysis-block">
+                  <div class="block-heading"><span>Lectura profunda</span><span id="deepAnalysisBadge" class="quiet-badge">Profundo</span></div>
+                  <div id="deepSummaryGrid" class="deep-summary-grid"></div>
+                  <div id="deepSignals" class="deep-signals"></div>
+                  <div id="deepHistoryRecent" class="deep-history-recent"></div>
+                </section>
+
+                <section id="noteEvolutionSection" class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Evolución de Nota</span></div>
+                  <div class="chart-wrap sentinel-chart"><svg id="noteEvolutionChart" viewBox="0 0 760 260" preserveAspectRatio="none"></svg></div>
+                </section>
+
+                <section id="classificationSection" class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>% Calificación SBS/Micro · últimos 24 meses</span></div>
+                  <div class="chart-wrap sentinel-chart"><svg id="classificationChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
+                  <div id="classificationLegend" class="sentinel-legend"></div>
+                </section>
+
+                <section id="overdueTypeSection" class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Endeudamiento vencido total por tipo</span></div>
+                  <div class="chart-wrap sentinel-chart"><svg id="overdueTypeChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
+                  <div class="sentinel-legend"><span><i class="legend-cyan"></i>Vencidos + SBS</span><span><i class="legend-purple"></i>Otros + Doc. impagos</span></div>
+                </section>
+
+                <section id="overdueShareSection" class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Vencidos en los últimos 24 meses · por tipo (%)</span></div>
+                  <div id="overdueShareChart" class="pie-chart-card"></div>
+                </section>
+
+                <section id="currentVsOverdueSection" class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Deuda vigente y vencida SBS/Micro</span></div>
+                  <div class="chart-wrap sentinel-chart"><svg id="currentVsOverdueChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
+                  <div class="sentinel-legend"><span><i class="legend-blue"></i>Vigente SBS</span><span><i class="legend-coral"></i>Vencido SBS</span></div>
+                </section>
+
+                <section id="institutionShareSection" class="pane-block sentinel-chart-block">
+                  <div class="block-heading"><span>Endeudamiento SBS/Micro por institución (%)</span></div>
+                  <div id="institutionShareChart" class="pie-chart-card"></div>
+                </section>
+              </div>
+            </section>
+
+            <!-- DERECHA: interpretación, plan y seguimiento -->
+            <section class="analysis-pane pane-insights pane-reading">
+              <header class="pane-header">
+                <span class="pane-index">03</span>
                 <div><span class="eyebrow">LECTURA DEL REPORTE</span><h2>Interpretación y plan</h2></div>
                 <span class="advisor-badge">SOLO ASESOR</span>
               </header>
@@ -203,136 +336,7 @@
                 </section>
               </div>
             </section>
-
-            <!-- CENTRO: toda la ficha del cliente -->
-            <section class="analysis-pane pane-client">
-              <header class="pane-header client-header">
-                <span class="pane-index">02</span>
-                <div><span class="eyebrow">VISTA CLIENTE</span><h2>Análisis financiero</h2></div>
-                <span class="client-live-badge">EN VIVO</span>
-              </header>
-              <div class="pane-scroll">
-                <section class="client-identity">
-                  <div id="clientScoreFace" class="score-face face-unrated" aria-label="Estado del score">
-                    <i class="face-eye face-eye-left"></i>
-                    <i class="face-eye face-eye-right"></i>
-                    <i class="face-mouth"></i>
-                  </div>
-                  <div class="identity-copy"><h2 id="clientName">Cliente</h2><p id="clientSubline">Documento protegido · fecha del reporte</p></div>
-                  <div id="riskBadge" class="risk-label">POR REVISAR</div>
-                </section>
-
-                <section class="score-band score-client">
-                  <div class="score-gauge-wrap">
-                    <svg id="scoreGaugeSvg" class="score-gauge-svg" viewBox="0 0 320 190" role="img" aria-label="Medidor de score"></svg>
-                    <div class="score-gauge-center">
-                      <span>Tu Score es</span>
-                      <b id="scoreValue">—</b>
-                      <small>de 999</small>
-                    </div>
-                  </div>
-                  <div class="score-result-copy">
-                    <b id="scoreCategory">Puntaje por revisar</b>
-                    <span id="scoreRange">Score: —</span>
-                  </div>
-                  <p id="scoreDescription"></p>
-                  <div id="debtDelta" class="debt-delta"></div>
-                  <div class="score-scale-legend" aria-label="Rangos del score">
-                    <span><i class="score-c1"></i><b>1–476</b><small>Muy Bajo</small></span>
-                    <span><i class="score-c2"></i><b>477–597</b><small>Bajo</small></span>
-                    <span><i class="score-c3"></i><b>598–721</b><small>Medio</small></span>
-                    <span><i class="score-c4"></i><b>722–876</b><small>Bueno</small></span>
-                    <span><i class="score-c5"></i><b>877–999</b><small>Excelente</small></span>
-                  </div>
-                </section>
-
-                <section id="detectedDataSection" class="client-section">
-                  <div class="section-title-row"><h3>Datos identificados</h3><small>Extraídos del reporte</small></div>
-                  <div id="detectedData" class="data-list"></div>
-                </section>
-
-                <section id="entitiesSection" class="client-section">
-                  <div class="section-title-row"><h3>Entidades y obligaciones</h3><small id="entityCount">0 registros</small></div>
-                  <div id="entitiesTable" class="formal-table"></div>
-                </section>
-
-                <section id="obligationsSection" class="client-section">
-                  <div class="section-title-row"><h3>Detalle de obligaciones</h3><small>Financieras y comerciales</small></div>
-                  <div id="obligationsTable" class="formal-table"></div>
-                </section>
-
-                <section id="inquiriesSection" class="client-section">
-                  <div class="section-title-row"><h3>Consultas y solicitudes</h3><small>Cuando el reporte las informa</small></div>
-                  <div id="inquiriesList" class="timeline-list"></div>
-                </section>
-
-                <section id="reportSectionsSection" class="client-section">
-                  <div class="section-title-row"><h3>Información adicional del reporte</h3><small>Campos y bloques no omitidos</small></div>
-                  <div id="reportSections" class="report-sections"></div>
-                </section>
-              </div>
-            </section>
-
-            <!-- DERECHA: gráficos y comportamiento -->
-            <section class="analysis-pane pane-insights">
-              <header class="pane-header">
-                <span class="pane-index">03</span>
-                <div><span class="eyebrow">ANÁLISIS VISUAL</span><h2>Comportamiento financiero</h2></div>
-                <span class="advisor-badge">SOLO ASESOR</span>
-              </header>
-              <div class="pane-scroll">
-                <section class="pane-block metrics-block">
-                  <div class="block-heading"><span>Cifras clave</span></div>
-                  <div id="metricsGrid" class="metrics-grid"></div>
-                </section>
-
-                <section class="pane-block deep-analysis-block">
-                  <div class="block-heading"><span>Lectura profunda</span><span id="deepAnalysisBadge" class="quiet-badge">Profundo</span></div>
-                  <div id="deepSummaryGrid" class="deep-summary-grid"></div>
-                  <div id="deepSignals" class="deep-signals"></div>
-                  <div id="deepHistoryRecent" class="deep-history-recent"></div>
-                </section>
-
-                <section id="noteEvolutionSection" class="pane-block sentinel-chart-block">
-                  <div class="block-heading"><span>Evolución de Nota</span></div>
-                  <div class="chart-wrap sentinel-chart"><svg id="noteEvolutionChart" viewBox="0 0 760 260" preserveAspectRatio="none"></svg></div>
-                </section>
-
-                <section id="classificationSection" class="pane-block sentinel-chart-block">
-                  <div class="block-heading"><span>% Calificación SBS/Micro · últimos 24 meses</span></div>
-                  <div class="chart-wrap sentinel-chart"><svg id="classificationChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
-                  <div id="classificationLegend" class="sentinel-legend"></div>
-                </section>
-
-                <section id="overdueTypeSection" class="pane-block sentinel-chart-block">
-                  <div class="block-heading"><span>Endeudamiento vencido total por tipo</span></div>
-                  <div class="chart-wrap sentinel-chart"><svg id="overdueTypeChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
-                  <div class="sentinel-legend"><span><i class="legend-cyan"></i>Vencidos + SBS</span><span><i class="legend-purple"></i>Otros + Doc. impagos</span></div>
-                </section>
-
-                <section id="overdueShareSection" class="pane-block sentinel-chart-block">
-                  <div class="block-heading"><span>Vencidos en los últimos 24 meses · por tipo (%)</span></div>
-                  <div id="overdueShareChart" class="pie-chart-card"></div>
-                </section>
-
-                <section id="currentVsOverdueSection" class="pane-block sentinel-chart-block">
-                  <div class="block-heading"><span>Deuda vigente y vencida SBS/Micro</span></div>
-                  <div class="chart-wrap sentinel-chart"><svg id="currentVsOverdueChart" viewBox="0 0 760 280" preserveAspectRatio="none"></svg></div>
-                  <div class="sentinel-legend"><span><i class="legend-blue"></i>Vigente SBS</span><span><i class="legend-coral"></i>Vencido SBS</span></div>
-                </section>
-
-                <section id="institutionShareSection" class="pane-block sentinel-chart-block">
-                  <div class="block-heading"><span>Endeudamiento SBS/Micro por institución (%)</span></div>
-                  <div id="institutionShareChart" class="pie-chart-card"></div>
-                </section>
-
-                <section class="pane-block admin-only">
-                  <div class="block-heading"><span>Cobertura de lectura</span></div>
-                  <div id="coverageBox" class="coverage-box"></div>
-                </section>
-              </div>
-            </section>
-          </div>
+          </div>          </div>
         </section>
       </section>
 
@@ -355,6 +359,6 @@
     </main>
   </div>
 
-  <script type="module" src="/admin/admin.js?v=20260915-samples2"></script>
+  <script type="module" src="/admin/admin.js?v=20260915-columns1"></script>
 </body>
 </html>
