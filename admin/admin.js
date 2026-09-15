@@ -757,6 +757,15 @@ function parseSentinelUnpaidDocuments(text=''){
   items.push({creditor,amount:reportMoneyNumber(m[2])||0,days:Number(m[3])||0});
   if(items.length>=12)break;
  }
+ if(!items.length){
+  const alt=/([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ0-9 .&'–\-]{2,70}?)\s+1\s+([\d,]+\.\d{2})\s+(\d{1,4})\b/g;
+  while((m=alt.exec(chunk))){
+   const creditor=String(m[1]||'').replace(/\s+/g,' ').trim();
+   if(/(?:documentos impagos|detalle de vencidos|utilizaci[oó]n de l[ií]neas)/i.test(creditor))continue;
+   items.push({creditor,amount:reportMoneyNumber(m[2])||0,days:Number(m[3])||0});
+   if(items.length>=12)break;
+  }
+ }
  return {total:total||items.reduce((s,x)=>s+x.amount,0),items};
 }
 function parseSentinelUnpaidDocument(text=''){
@@ -775,6 +784,13 @@ function parseCreditLines(text=''){
  while((m=re.exec(chunk))){
   rows.push({entity:String(m[1]).trim(),type:m[2],approved:reportMoneyNumber(m[3])||0,unused:reportMoneyNumber(m[4])||0,used:reportMoneyNumber(m[5])||0,utilization:Number(m[6])||0});
   if(rows.length>=10)break;
+ }
+ if(!rows.length){
+  const alt=/\b([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ0-9 .&'\-]{1,35})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d{1,3})%\s+(TCO|LDC|TC|CR[EÉ]D(?:ITO)?)\s+([\d,]+\.\d{2})/g;
+  while((m=alt.exec(chunk))){
+   rows.push({entity:String(m[1]).trim(),type:m[5],approved:reportMoneyNumber(m[2])||0,unused:reportMoneyNumber(m[6])||0,used:reportMoneyNumber(m[3])||0,utilization:Number(m[4])||0});
+   if(rows.length>=10)break;
+  }
  }
  return rows;
 }
@@ -1895,6 +1911,8 @@ function renderFollowUp(f={}){
  const qs=(f.questions||[]).filter(isMeaningfulDisplayValue);
  const points=$('#followUpPoints');if(points)points.innerHTML=pts.map(x=>'<li>'+esc(x)+'</li>').join('');
  const questions=$('#followUpQuestions');if(questions)questions.innerHTML=qs.map(x=>'<li>'+esc(x)+'</li>').join('');
+ const hasFollow=isMeaningfulDisplayValue(f.timeframe)||isMeaningfulDisplayValue(f.objective)||isMeaningfulDisplayValue(f.nextReview)||pts.length||qs.length;
+ toggleBlock('.followup-block',Boolean(hasFollow));
 }
 function renderDeepAnalysis(deep,mode='fast'){
  const grid=$('#deepSummaryGrid'),signals=$('#deepSignals'),recent=$('#deepHistoryRecent'),badge=$('#deepAnalysisBadge');
@@ -1929,6 +1947,7 @@ function renderData(data){
    return '<div class="data-item" data-key="'+esc(k)+'"><span>'+esc(labelEs(k))+'</span><b>'+esc(safe)+'</b></div>';
   }).filter(Boolean);
  $('#detectedData').innerHTML=rows.join('');
+ toggleBlock('#detectedDataSection',rows.length>0);
 }
 $('#editDataBtn')?.addEventListener('click',()=>{if(!state.analysis)return;state.editing=!state.editing;$('#editDataBtn').textContent=state.editing?'Guardar':'Editar datos';$$('#detectedData .data-item').forEach(el=>{const key=el.dataset.key,b=el.querySelector('b');if(state.editing)b.outerHTML='<input value="'+esc(state.analysis.raw[key])+'">';else{const i=el.querySelector('input');state.analysis.raw[key]=i.value;i.outerHTML='<b>'+esc(i.value)+' *</b>'}})});
 function clsStatus(s=''){s=s.toLowerCase();return /normal|al día|vigente|cancelad|detectada/.test(s)?'status-good':/mora|vencid|impag|castig|pérdida|pendiente/.test(s)?'status-bad':'status-warn'}
@@ -2174,7 +2193,7 @@ function historySnapshot(a){
  };
 }
 function deltaText(current,previous,prefix=''){
- if(current==null||previous==null)return 'Sin comparación';
+ if(current==null||previous==null)return '';
  const d=current-previous;
  if(Math.abs(d)<.005)return prefix+'Sin cambio';
  return prefix+(d>0?'+':'')+d.toLocaleString('es-PE',{maximumFractionDigits:2});
@@ -2286,8 +2305,8 @@ function renderHistory(){
   const reports=group.reports,latest=reports[0],prev=reports[1];
   const ls=latest.snapshot||{},ps=prev?.snapshot||{};
   const scoreDelta=prev?deltaText(ls.score,ps.score):'Primera lectura';
-  const debtDelta=prev?deltaText(ls.currentDebt,ps.currentDebt,'S/ '):'Sin anterior';
-  const overdueDelta=prev?deltaText(ls.overdueDebt,ps.overdueDebt,'S/ '):'Sin anterior';
+  const debtDelta=prev?deltaText(ls.currentDebt,ps.currentDebt,'S/ '):'';
+  const overdueDelta=prev?deltaText(ls.overdueDebt,ps.overdueDebt,'S/ '):'';
   const follow=latest.followUp||{};
   const rows=reports.map((r,i)=>{
    const prior=reports[i+1],rs=r.snapshot||{},prs=prior?.snapshot||{};
