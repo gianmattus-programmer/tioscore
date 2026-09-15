@@ -728,7 +728,7 @@ function extractHistoricalRatings(source=''){
  const ratings=new Map();
  const raw=String(source||'');
  const ocrParts=raw.split(/--- OCR HIST[ÓO]RICO P[ÁA]GINA \d+ ---/i).slice(1);
- const targets=ocrParts.length?ocrParts:[raw];
+ const targets=[raw,...ocrParts];
  for(const part of targets){
   const dateRe=/\b(\d{2}\/\d{2}\/\d{4})\b/g;
   const matches=[...part.matchAll(dateRe)];
@@ -781,21 +781,37 @@ function parseSentinelHistory(text=''){
  const raw=String(text||'');
  const ratingByDate=extractHistoricalRatings(raw);
  const rows=[],seen=new Set();
- for(const line of raw.split(/\r?\n/)){
-  const row=parseHistoricalRowLine(line,ratingByDate);
-  if(!row||seen.has(row.date))continue;
+ const push=row=>{
+  if(!row||seen.has(row.date))return;
+  if(!row.rating&&ratingByDate.has(row.date))row.rating=ratingByDate.get(row.date);
   seen.add(row.date);rows.push(row);
+ };
+
+ // 1. Lectura por flujo: funciona aunque PDF.js haya separado una fila visual en varias líneas.
+ const stream=raw.replace(/\s+/g,' ');
+ const streamRe=/\b(\d{2}\/\d{2}\/\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)\s+(?:(NOR|CPP|DEF|DUD|PER|SCAL)\s+)?([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/gi;
+ let m;
+ while((m=streamRe.exec(stream))){
+  const num=v=>Number(String(v).replace(/,/g,''))||0;
+  const signal=Number(m[2])||0,entities=Number(m[3])||0,totalDebt=num(m[4]),normalPct=Number(m[5])||0;
+  if(signal<0||signal>10||entities<0||entities>99||totalDebt<0||normalPct<0||normalPct>100.5)continue;
+  push({
+   date:m[1],signal,entities,totalDebt,normalPct,rating:String(m[6]||'').toUpperCase(),
+   overdueSbs:num(m[7]),otherOverdue:num(m[8]),unpaidDocs:num(m[9]),taxDebt:num(m[10]),laborDebt:num(m[11]),
+   countA:Number(m[12])||0,countB:Number(m[13])||0,countC:Number(m[14])||0
+  });
  }
+
+ // 2. Conserva el parser por línea para otras variantes.
+ for(const line of raw.split(/\r?\n/))push(parseHistoricalRowLine(line,ratingByDate));
+
+ // 3. Último respaldo: toma el bloque comprendido entre una fecha y la siguiente.
  if(rows.length<3){
   const dates=[...raw.matchAll(/\b\d{2}\/\d{2}\/\d{4}\b/g)];
   for(let i=0;i<dates.length;i++){
-   const date=dates[i][0];
-   if(seen.has(date))continue;
    const from=dates[i].index||0;
-   const to=i+1<dates.length?(dates[i+1].index||from+300):Math.min(raw.length,from+320);
-   const row=parseHistoricalRowLine(raw.slice(from,Math.min(to,from+320)),ratingByDate);
-   if(!row||seen.has(row.date))continue;
-   seen.add(row.date);rows.push(row);
+   const to=i+1<dates.length?(dates[i+1].index||from+420):Math.min(raw.length,from+460);
+   push(parseHistoricalRowLine(raw.slice(from,Math.min(to,from+460)),ratingByDate));
   }
  }
  return rows.sort((a,b)=>historyDateValue(b.date)-historyDateValue(a.date));
@@ -899,6 +915,24 @@ function buildSentinelDeepAnalysis(text='',analysisMode='deep',rawSource=''){
  };
 }
 
+function extractCreditScore(source=''){
+ const raw=String(source||'');
+ const texts=[raw,raw.replace(/\s+/g,' ')];
+ const patterns=[
+  /Score\s+Experian[\s\S]{0,220}?\b([1-9]\d{2})\b(?=[\s\S]{0,180}?Puntaje)/i,
+  /\b([1-9]\d{2})\b[\s\S]{0,100}?(?:NO\s+CUMPLE\s+)?Puntaje\s+(?:Muy\s+)?(?:Bajo|Medio|Bueno|Excelente)/i,
+  /Sabio\s+Empresarial[\s\S]{0,220}?\b([1-9]\d{2})\b(?=[\s\S]{0,140}?Puntaje)/i,
+  /\bExperian\b[\s\S]{0,260}?\b([1-9]\d{2})\b(?=[\s\S]{0,180}?Puntaje)/i
+ ];
+ for(const text of texts){
+  for(const re of patterns){
+   const m=text.match(re),score=Number(m?.[1]);
+   if(Number.isFinite(score)&&score>=1&&score<=999)return score;
+  }
+ }
+ return 0;
+}
+
 function parseCreditReport(source,meta={}){
  const rawSource=String(source||'');
  const profile=meta.profile||detectReportProfile(rawSource);
@@ -917,12 +951,7 @@ function parseCreditReport(source,meta={}){
  ]);
  const ruc=reportCapture(text,[/\bRUC\s*(?:N[°ºo.]*)?\s*[:\-]?\s*(\d{11})\b/i]);
  const ce=reportCapture(text,[/\b(?:CE|C\.E\.|CARN[EÉ]\s+DE\s+EXTRANJER[IÍ]A)\s*(?:N[°ºo.]*)?\s*[:\-]?\s*([A-Z0-9]{8,12})\b/i]);
- const scoreRaw=reportCapture(text,[
-  /(?:score(?:\s+crediticio|\s+experian)?|puntaje(?:\s+crediticio|\s+experian)?|rating)\s*[:\-]?\s*(\d{1,3})\b/i,
-  /\bexperian\b.{0,35}\b(\d{3})\b/i,
-  /(?:calificaci[oó]n\s+crediticia).{0,30}?\b(\d{3})\b/i
- ]);
- const score=Math.max(0,Math.min(999,Number(scoreRaw)||0));
+ const score=extractCreditScore(rawSource)||extractCreditScore(text);
  const scoreLabel=reportCapture(text,[/(?:nivel\s+del\s+score|puntaje)\s*[:\-]?\s*(puntaje\s+(?:muy\s+)?(?:bajo|medio|bueno|excelente)|(?:muy\s+)?(?:bajo|medio|bueno|excelente))/i]);
  const creation=reportCapture(text,[/(?:fecha(?: y hora)? de creaci[oó]n|creationDateTime)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)/i]);
  const updated=reportCapture(text,[/(?:informaci[oó]n actualizada(?: al)?|informationUpdated)\s*[:\-]?\s*(\d{2}[\/.-]\d{2}[\/.-]\d{4})/i,/(?:informaci[oó]n actualizada(?: al)?)[^\d]{0,10}(\d{1,2}\s+de\s+[A-Za-zÁÉÍÓÚáéíóú]+\s+del?\s+\d{4})/i]);
@@ -1144,7 +1173,7 @@ function interpretationPayload(a){
   picoVencido:a.deepAnalysis.peakOverdue,
   reduccionDesdePico:a.deepAnalysis.debtReductionFromPeak,
   periodosRojos:a.deepAnalysis.redPeriods,
-  recientes:(a.deepAnalysis.recent||[]).slice(0,6).map(r=>({f:r.date,d:r.totalDebt,v:r.overdueSbs,doc:r.unpaidDocs,s:r.signal,n:r.normalPct,c:r.rating||''}))
+  recientes:collapseHistoryMonthly(a.deepAnalysis.history||[]).slice(0,18).map(r=>({f:r.date,d:r.totalDebt,v:r.overdueSbs,doc:r.unpaidDocs,s:r.signal,n:r.normalPct,c:r.rating||''}))
  }:null;
  return {
   score:a.score,
@@ -1154,8 +1183,8 @@ function interpretationPayload(a){
   fuente:a.sourceReport?.provider||'Reporte crediticio',
   plantilla:a.sourceReport?.template||'Estructura adaptable',
   datos,
-  entidades:(a.entities||[]).slice(0,8).map(x=>({n:x.name,p:x.product,s:x.balance,e:x.status||x.classification})),
-  obligaciones:(a.obligations||[]).slice(0,10).map(x=>({e:x.entity,p:x.product,s:x.balance,st:x.status,d:x.detail})),
+  entidades:(a.entities||[]).slice(0,12).map(x=>({n:x.name,p:x.product,s:x.balance,e:x.status||x.classification})),
+  obligaciones:(a.obligations||[]).slice(0,15).map(x=>({e:x.entity,p:x.product,s:x.balance,st:x.status,d:x.detail})),
   profundo:deep
  };
 }
@@ -1436,7 +1465,7 @@ function parseQwenFieldResponse(text=''){
 async function runLocalInterpretation(analysis){
  await getLocalAiEngine();
  const deep=analysis.sourceReport?.analysisMode==='deep'&&analysis.deepAnalysis;
- const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,deep?3400:1700);
+ const payload=JSON.stringify(interpretationPayload(analysis)).slice(0,deep?5200:2000);
  const system='Eres asesor educativo de Tío Score en Perú. Usa únicamente los datos recibidos. No inventes cifras ni prometas aprobación, aumento garantizado del score o eliminación de registros. Responde en español y sin markdown.';
  const focus=deep
   ?'Haz una lectura profunda: compara situación actual con el pico histórico, distingue deuda vigente de vencida y documentos impagos, explica mejoras y riesgos históricos, y prioriza la siguiente acción.'
@@ -2229,7 +2258,10 @@ function fiveYearMonthlyHistory(history=[]){
 }
 function financeRating(row){
  const r=String(row?.rating||'').toUpperCase();
- return ['NOR','CPP','DEF','DUD','PER','SCAL'].includes(r)?r:'';
+ if(['NOR','CPP','DEF','DUD','PER','SCAL'].includes(r))return r;
+ // Si el reporte indica 100% normal y cero vencido, la clasificación mensual es inequívocamente NOR.
+ if(row&&Number(row.normalPct)>=99.99&&Number(row.overdueSbs||0)===0)return 'NOR';
+ return '';
 }
 function financeRatingClass(rating){
  const r=String(rating||'').toLowerCase();
