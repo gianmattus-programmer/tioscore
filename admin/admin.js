@@ -1612,7 +1612,7 @@ async function parallelMapLimit(items,limit,worker){
  await Promise.all(runners);
 }
 
-function pdfItemsToLayoutText(items=[]){
+function pdfItemsToLayoutText(items=[],rowTolerance=2.2){
  const cells=[];
  for(const item of items||[]){
   const str=String(item?.str||'').replace(/\s+/g,' ').trim();
@@ -1624,7 +1624,7 @@ function pdfItemsToLayoutText(items=[]){
  cells.sort((a,b)=>Math.abs(b.y-a.y)>2?b.y-a.y:a.x-b.x);
  const rows=[];
  for(const cell of cells){
-  let row=rows.find(r=>Math.abs(r.y-cell.y)<=2.2);
+  let row=rows.find(r=>Math.abs(r.y-cell.y)<=rowTolerance);
   if(!row){row={y:cell.y,cells:[]};rows.push(row)}
   row.cells.push(cell);
  }
@@ -1659,9 +1659,10 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
   const page=await pdf.getPage(i);
   const content=await page.getTextContent();
   const flatText=content.items.map(x=>x.str).join(' ').replace(/\s+/g,' ').trim();
-  const layoutText=pdfItemsToLayoutText(content.items);
+  const layoutText=pdfItemsToLayoutText(content.items,2.2);
+  const wideLayoutText=pdfItemsToLayoutText(content.items,5.2);
   const digitalText=layoutText.length>=80?layoutText:flatText;
-  const detectText=(layoutText+'\n'+flatText).trim();
+  const detectText=(wideLayoutText+'\n'+layoutText+'\n'+flatText).trim();
 
   if(isDigitalTextUseful(flatText||digitalText,content.items)){
    digitalPages++;
@@ -1671,8 +1672,9 @@ async function extractPdfHybrid(file,{onQuickText,deepHistoryOCR=false}={}){
     const historicalHeader=/posici[oó]n hist[oó]rica|%\s*cali\.?\s*normal|peor\s+califi|superintendencia de banca y seguros/i.test(detectText);
     const rowLike=(detectText.match(/\b\d{2}\/\d{2}\/\d{4}\s+\d+(?:\.\d+)?\s+\d+\s+[\d,]+\.\d{2}/g)||[]).length;
     const historicalRows=dates>=3&&(rowLike>=3||/(?:sema\.?|riesgo|deuda total|deuda vencida|califi)/i.test(detectText));
-    if((historicalHeader||historicalRows)&&historyOcrJobs.length<8){
-     historyOcrJobs.push({page,pageNumber:i,index:i-1});
+    if(historicalHeader||historicalRows){
+     pages[i-1]+='\n--- LAYOUT HISTÓRICO REFORZADO PÁGINA '+i+' ---\n'+wideLayoutText;
+     if(historyOcrJobs.length<8)historyOcrJobs.push({page,pageNumber:i,index:i-1});
     }
    }
    maybeStartQuick();
