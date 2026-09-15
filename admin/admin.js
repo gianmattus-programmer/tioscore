@@ -726,17 +726,19 @@ function collapseHistoryMonthly(rows=[]){
 }
 function parseSentinelHistory(text=''){
  const rows=[];
- const re=/\b(\d{2}\/\d{2}\/\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/g;
+ const re=/\b(\d{2}\/\d{2}\/\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)(?:\s+(NOR|CPP|DEF|DUD|PER|SCAL))?\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/g;
  const seen=new Set();
  let m;
  while((m=re.exec(String(text)))){
   if(seen.has(m[1]))continue;
   seen.add(m[1]);
   const num=v=>Number(String(v).replace(/,/g,''))||0;
+  const rating=String(m[6]||'').toUpperCase();
   rows.push({
    date:m[1],signal:Number(m[2])||0,entities:Number(m[3])||0,totalDebt:num(m[4]),normalPct:Number(m[5])||0,
-   overdueSbs:num(m[6]),otherOverdue:num(m[7]),unpaidDocs:num(m[8]),taxDebt:num(m[9]),laborDebt:num(m[10]),
-   countA:Number(m[11])||0,countB:Number(m[12])||0,countC:Number(m[13])||0
+   rating,
+   overdueSbs:num(m[7]),otherOverdue:num(m[8]),unpaidDocs:num(m[9]),taxDebt:num(m[10]),laborDebt:num(m[11]),
+   countA:Number(m[12])||0,countB:Number(m[13])||0,countC:Number(m[14])||0
   });
  }
  return rows;
