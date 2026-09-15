@@ -724,19 +724,54 @@ function collapseHistoryMonthly(rows=[]){
  }
  return monthly;
 }
-function extractHistoricalRatings(source=''){
+function inferHistoryReferenceYear(source=''){
+ const raw=String(source||'');
+ const preferred=[
+  /Informaci[oó]n actualizada al[^0-9]{0,30}(?:\d{1,2}\s+de\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+\s+(?:del?\s+)?)(20\d{2})/i,
+  /Fecha y Hora de creaci[oó]n[^0-9]{0,20}\d{1,2}[\/.-]\d{1,2}[\/.-](20\d{2})/i,
+  /Reporte de Cr[eé]dito[\s\S]{0,160}?(20\d{2})/i
+ ];
+ for(const re of preferred){
+  const m=raw.match(re),y=Number(m?.[1]);
+  if(y>=2000&&y<=2100)return y;
+ }
+ const years=[...raw.matchAll(/\b(20\d{2})\b/g)].map(m=>Number(m[1])).filter(y=>y>=2000&&y<=2100);
+ return years.length?Math.max(...years):new Date().getFullYear();
+}
+function normalizeHistoryYear(year,referenceYear){
+ let y=Number(year)||0;
+ const ref=Number(referenceYear)||new Date().getFullYear();
+ if(y>=2000&&y<=2100)return y;
+ // Error OCR frecuente: 2026 -> 2206, 2025 -> 2205, etc.
+ if(y>=2200&&y<=2299){
+  const s=String(y).padStart(4,'0');
+  const candidate=Number(s[0]+s[2]+s[1]+s[3]);
+  if(candidate>=2000&&candidate<=2100&&Math.abs(candidate-ref)<=8)return candidate;
+ }
+ return 0;
+}
+function normalizeHistoryDate(date='',referenceYear){
+ const m=String(date||'').match(/\b(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})\b/);
+ if(!m)return '';
+ const d=Number(m[1]),mo=Number(m[2]),y=normalizeHistoryYear(m[3],referenceYear);
+ if(!y||d<1||d>31||mo<1||mo>12)return '';
+ return String(d).padStart(2,'0')+'/'+String(mo).padStart(2,'0')+'/'+y;
+}
+function extractHistoricalRatings(source='',referenceYear){
  const ratings=new Map();
  const raw=String(source||'');
+ const ref=Number(referenceYear)||inferHistoryReferenceYear(raw);
  const ocrParts=raw.split(/--- OCR HIST[ÓO]RICO P[ÁA]GINA \d+ ---/i).slice(1);
- const targets=[raw,...ocrParts];
+ const targets=[...ocrParts,raw];
  for(const part of targets){
-  const dateRe=/\b(\d{2}\/\d{2}\/\d{4})\b/g;
+  const dateRe=/\b(\d{2}[\/.-]\d{2}[\/.-]\d{4})\b/g;
   const matches=[...part.matchAll(dateRe)];
   for(let i=0;i<matches.length;i++){
-   const date=matches[i][1];
+   const date=normalizeHistoryDate(matches[i][1],ref);
+   if(!date)continue;
    const from=(matches[i].index||0)+matches[i][0].length;
-   const to=i+1<matches.length?(matches[i+1].index||from+260):Math.min(part.length,from+320);
-   const segment=part.slice(from,Math.min(to,from+320));
+   const to=i+1<matches.length?(matches[i+1].index||from+420):Math.min(part.length,from+460);
+   const segment=part.slice(from,Math.min(to,from+460));
    const code=segment.match(/\b(NOR|CPP|DEF|DUD|PER|SCAL)\b/i)?.[1]?.toUpperCase()||'';
    if(code&&!ratings.has(date))ratings.set(date,code);
   }
@@ -749,11 +784,12 @@ function historicalNumberToken(value=''){
  const n=Number(s.replace(/,/g,''));
  return Number.isFinite(n)?n:null;
 }
-function parseHistoricalRowLine(line='',ratingByDate=new Map()){
+function parseHistoricalRowLine(line='',ratingByDate=new Map(),referenceYear){
  const source=String(line||'').replace(/\s+/g,' ').trim();
- const dm=source.match(/\b(\d{2}\/\d{2}\/\d{4})\b/);
+ const dm=source.match(/\b(\d{2}[\/.-]\d{2}[\/.-]\d{4})\b/);
  if(!dm)return null;
- const date=dm[1];
+ const date=normalizeHistoryDate(dm[1],referenceYear);
+ if(!date)return null;
  const tail=source.slice((dm.index||0)+dm[0].length);
  const rawTokens=tail.match(/\b(?:NOR|CPP|DEF|DUD|PER|SCAL)\b|[-+]?\d[\d,]*(?:\.\d+)?/gi)||[];
  const ratingToken=rawTokens.find(t=>/^(?:NOR|CPP|DEF|DUD|PER|SCAL)$/i.test(t));
@@ -779,42 +815,62 @@ function parseHistoricalRowLine(line='',ratingByDate=new Map()){
 }
 function parseSentinelHistory(text=''){
  const raw=String(text||'');
- const ratingByDate=extractHistoricalRatings(raw);
- const rows=[],seen=new Set();
+ const referenceYear=inferHistoryReferenceYear(raw);
+ const ratingByDate=extractHistoricalRatings(raw,referenceYear);
+ const rows=[],byDate=new Map();
  const push=row=>{
-  if(!row||seen.has(row.date))return;
+  if(!row)return;
+  row.date=normalizeHistoryDate(row.date,referenceYear);
+  if(!row.date)return;
+  const y=Number(row.date.split('/')[2]);
+  if(y<referenceYear-8||y>referenceYear+1)return;
   if(!row.rating&&ratingByDate.has(row.date))row.rating=ratingByDate.get(row.date);
-  seen.add(row.date);rows.push(row);
+  const prev=byDate.get(row.date);
+  if(prev){
+   // Mantener cifras del texto digital y usar OCR solo para completar clasificación.
+   if(!prev.rating&&row.rating)prev.rating=row.rating;
+   return;
+  }
+  byDate.set(row.date,row);
+  rows.push(row);
  };
 
- // 1. Lectura por flujo: funciona aunque PDF.js haya separado una fila visual en varias líneas.
- const stream=raw.replace(/\s+/g,' ');
- const streamRe=/\b(\d{2}\/\d{2}\/\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)\s+(?:(NOR|CPP|DEF|DUD|PER|SCAL)\s+)?([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/gi;
+ // 1. Texto digital: fuente principal de montos.
+ const digitalOnly=raw.split(/--- OCR HIST[ÓO]RICO P[ÁA]GINA \d+ ---/i)[0];
+ const stream=digitalOnly.replace(/\s+/g,' ');
+ const streamRe=/\b(\d{2}[\/.-]\d{2}[\/.-]\d{4})\s+(\d+(?:\.\d+)?)\s+(\d+)\s+([\d,]+\.\d{2})\s+([\d.]+)\s+(?:(NOR|CPP|DEF|DUD|PER|SCAL)\s+)?([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s+(\d+)\s+(\d+)\s+(\d+)\b/gi;
  let m;
  while((m=streamRe.exec(stream))){
   const num=v=>Number(String(v).replace(/,/g,''))||0;
+  const date=normalizeHistoryDate(m[1],referenceYear);
   const signal=Number(m[2])||0,entities=Number(m[3])||0,totalDebt=num(m[4]),normalPct=Number(m[5])||0;
-  if(signal<0||signal>10||entities<0||entities>99||totalDebt<0||normalPct<0||normalPct>100.5)continue;
+  if(!date||signal<0||signal>10||entities<0||entities>99||totalDebt<0||normalPct<0||normalPct>100.5)continue;
   push({
-   date:m[1],signal,entities,totalDebt,normalPct,rating:String(m[6]||'').toUpperCase(),
+   date,signal,entities,totalDebt,normalPct,rating:String(m[6]||ratingByDate.get(date)||'').toUpperCase(),
    overdueSbs:num(m[7]),otherOverdue:num(m[8]),unpaidDocs:num(m[9]),taxDebt:num(m[10]),laborDebt:num(m[11]),
    countA:Number(m[12])||0,countB:Number(m[13])||0,countC:Number(m[14])||0
   });
  }
 
- // 2. Conserva el parser por línea para otras variantes.
- for(const line of raw.split(/\r?\n/))push(parseHistoricalRowLine(line,ratingByDate));
+ // 2. Lectura por línea del texto digital/layout.
+ for(const line of digitalOnly.split(/\r?\n/))push(parseHistoricalRowLine(line,ratingByDate,referenceYear));
 
- // 3. Último respaldo: toma el bloque comprendido entre una fecha y la siguiente.
+ // 3. OCR histórico: solo complementa códigos de clasificación o filas faltantes válidas.
+ const ocrParts=raw.split(/--- OCR HIST[ÓO]RICO P[ÁA]GINA \d+ ---/i).slice(1);
+ for(const part of ocrParts){
+  for(const line of part.split(/\r?\n/))push(parseHistoricalRowLine(line,ratingByDate,referenceYear));
+ }
+
+ // 4. Último respaldo sobre bloques digitales.
  if(rows.length<3){
-  const dates=[...raw.matchAll(/\b\d{2}\/\d{2}\/\d{4}\b/g)];
+  const dates=[...digitalOnly.matchAll(/\b\d{2}[\/.-]\d{2}[\/.-]\d{4}\b/g)];
   for(let i=0;i<dates.length;i++){
    const from=dates[i].index||0;
-   const to=i+1<dates.length?(dates[i+1].index||from+420):Math.min(raw.length,from+460);
-   push(parseHistoricalRowLine(raw.slice(from,Math.min(to,from+460)),ratingByDate));
+   const to=i+1<dates.length?(dates[i+1].index||from+460):Math.min(digitalOnly.length,from+500);
+   push(parseHistoricalRowLine(digitalOnly.slice(from,Math.min(to,from+500)),ratingByDate,referenceYear));
   }
  }
- return rows.sort((a,b)=>historyDateValue(b.date)-historyDateValue(a.date));
+ return rows.sort((a,b)=>historyDateValue(b.date,referenceYear)-historyDateValue(a.date,referenceYear));
 }
 function parseSentinelUnpaidDocuments(text=''){
  const source=String(text);
@@ -2230,24 +2286,41 @@ function fallbackCharts(x){
  };
 }
 
-function historyDateValue(date=''){
- const p=String(date).split('/').map(Number);
- if(p.length!==3||!p[0]||!p[1]||!p[2])return 0;
- return p[2]*10000+p[1]*100+p[0];
+function historyDateValue(date='',referenceYear){
+ const normalized=normalizeHistoryDate(date,referenceYear);
+ if(!normalized)return 0;
+ const [d,m,y]=normalized.split('/').map(Number);
+ return y*10000+m*100+d;
 }
-function fiveYearMonthlyHistory(history=[]){
- const valid=(history||[]).filter(r=>historyDateValue(r.date)>0);
- if(!valid.length)return {years:[],months:[],latest:null};
- const maxYear=Math.max(...valid.map(r=>Number(String(r.date).split('/')[2])||0));
- const years=Array.from({length:5},(_,i)=>maxYear-4+i);
+function reportReferenceYear(x){
+ const candidates=[
+  x?.sourceReport?.reportDate,
+  x?.client?.reportDate,
+  x?.raw?.['Información actualizada al'],
+  x?.raw?.['Fecha y hora de creación']
+ ].filter(Boolean).join(' ');
+ const y=Number(String(candidates).match(/\b(20\d{2})\b/)?.[1]);
+ if(y>=2000&&y<=2100)return y;
+ const history=Array.isArray(x?.deepAnalysis?.history)?x.deepAnalysis.history:[];
+ const plausible=history.map(r=>Number(String(r.date||'').match(/(?:\/|-)(20\d{2})\b/)?.[1])).filter(y=>y>=2000&&y<=2100);
+ return plausible.length?Math.max(...plausible):new Date().getFullYear();
+}
+function fiveYearMonthlyHistory(history=[],referenceYear){
+ const ref=Number(referenceYear)||new Date().getFullYear();
+ const years=Array.from({length:5},(_,i)=>ref-4+i);
  const allowed=new Set(years);
  const byMonth=new Map();
- for(const row of valid){
-  const [d,m,y]=String(row.date).split('/').map(Number);
+ const normalizedRows=[];
+ for(const original of history||[]){
+  const date=normalizeHistoryDate(original?.date,ref);
+  if(!date)continue;
+  const [d,m,y]=date.split('/').map(Number);
   if(!allowed.has(y))continue;
+  const row={...original,date};
+  normalizedRows.push(row);
   const key=y+'-'+String(m).padStart(2,'0');
   const prev=byMonth.get(key);
-  if(!prev||historyDateValue(row.date)>historyDateValue(prev.date))byMonth.set(key,row);
+  if(!prev||historyDateValue(row.date,ref)>historyDateValue(prev.date,ref))byMonth.set(key,row);
  }
  const months=[];
  for(const year of years){
@@ -2258,7 +2331,7 @@ function fiveYearMonthlyHistory(history=[]){
  }
  const available=months.filter(x=>x.row);
  const latest=available.length?available[available.length-1].row:null;
- return {years,months,latest};
+ return {years,months,latest,rows:normalizedRows};
 }
 function financeRating(row){
  const r=String(row?.rating||'').toUpperCase();
@@ -2374,7 +2447,8 @@ function renderFiveYearFinancial(x){
  const section=$('#financialFiveYearSection');if(!section)return;
  const deepMode=x.sourceReport?.analysisMode==='deep';
  const history=Array.isArray(x.deepAnalysis?.history)?x.deepAnalysis.history:[];
- const data=fiveYearMonthlyHistory(history);
+ const referenceYear=reportReferenceYear(x);
+ const data=fiveYearMonthlyHistory(history,referenceYear);
  const hasRows=data.years.length>0&&data.months.some(m=>m.row);
  toggleBlock('#financialFiveYearSection',deepMode||hasRows);
  if(!deepMode&&!hasRows)return;
@@ -2382,7 +2456,7 @@ function renderFiveYearFinancial(x){
  const trendCard=svg?.closest('.financial-trend-card');
  const matrixCard=matrix?.closest('.financial-matrix-card');
  if(!hasRows){
-  if(kbox)kbox.innerHTML='<div class="deep-mode-empty five-year-empty">No se encontró una serie histórica utilizable en esta lectura. Si el PDF sí contiene Posición Histórica, vuelve a analizarlo en modo Profundo para reforzar esas páginas con OCR.</div>';
+  if(kbox)kbox.innerHTML='<div class="deep-mode-empty five-year-empty">El PDF indica historial financiero, pero esta lectura no recuperó filas mensuales válidas. Vuelve a procesar el PDF en modo Profundo; el sistema leerá primero la tabla digital y usará OCR solo para completar las clasificaciones.</div>';
   if(matrix)matrix.innerHTML='';
   if(svg)svg.innerHTML='';
   if(trendCard)trendCard.classList.add('hidden');
