@@ -457,6 +457,62 @@ function reportCapture(text,patterns){
  }
  return '';
 }
+function detectReportProfile(source=''){
+ const text=String(source||'');
+ const lower=text.toLowerCase();
+ const has=re=>re.test(text);
+ let family='generic',provider='Reporte crediticio',template='Estructura adaptable',confidence=25;
+ if(has(/\bsentinel\b/i)||has(/posici[oó]n hist[oó]rica/i)||has(/consulta r[aá]pida/i)){
+  family='sentinel';provider=has(/\bexperian\b/i)?'Sentinel · Experian':'Sentinel';template='Sentinel / central de riesgo';confidence=95;
+ }else if(has(/\bequifax\b/i)||has(/\binfocorp\b/i)){
+  family='equifax';provider=has(/\binfocorp\b/i)?'Equifax · Infocorp':'Equifax';template='Equifax / Infocorp';confidence=90;
+ }else if(has(/\bexperian\b/i)){
+  family='experian';provider='Experian';template='Experian';confidence=85;
+ }else if(has(/\bsuperintendencia de banca\b/i)||has(/\bSBS\b/i)&&has(/clasificaci[oó]n|deudor|cr[eé]dito/i)){
+  family='sbs';provider='SBS';template='Reporte SBS';confidence=80;
+ }
+ return {
+  family,provider,template,confidence,
+  features:{
+   score:/(?:score|puntaje|rating|calificaci[oó]n crediticia)/i.test(text),
+   history:/(?:hist[oó]ric|evoluci[oó]n|últimos?\s+\d+\s+meses|ultimos?\s+\d+\s+meses)/i.test(text),
+   overdue:/(?:vencid|mora|atras|impag|protest)/i.test(text),
+   tax:/(?:sunat|tributari|laboral)/i.test(text)
+  }
+ };
+}
+function extractGenericPairs(source=''){
+ const lines=String(source||'').split(/\n+/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
+ const stop=/^(?:p[aá]gina|reporte|resumen|detalle|informaci[oó]n|consulta|score|historial|evoluci[oó]n)$/i;
+ const pairs=[];
+ const seen=new Set();
+ for(const line of lines){
+  const m=line.match(/^([A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9 /()._-]{2,42})\s*[:\-]\s*(.{1,100})$/);
+  if(!m)continue;
+  const label=m[1].trim(),value=m[2].trim();
+  const key=label.toLowerCase();
+  if(stop.test(label)||seen.has(key)||!value)continue;
+  seen.add(key);pairs.push({label,value});
+  if(pairs.length>=24)break;
+ }
+ return pairs;
+}
+function buildUniversalDeepAnalysis({current=0,overdue=0,docs=0,days=0,institutions=[],profile=null}={}){
+ const signals=[];
+ if(overdue>0)signals.push({level:'bad',title:'Deuda vencida detectada',text:'El reporte registra '+reportMoney(overdue)+' como deuda vencida.'});
+ if(docs>0)signals.push({level:'bad',title:'Documentos impagos o vencidos',text:'Se identifican '+reportMoney(docs)+' en documentos pendientes.'});
+ if(days>0)signals.push({level:'warn',title:'Atraso identificado',text:'El mayor atraso extraído es de '+days+' días.'});
+ if(current>0&&overdue===0&&docs===0)signals.push({level:'good',title:'Sin vencidos explícitos en los campos detectados',text:'Se identificó deuda vigente, pero no un monto vencido explícito en esta estructura.'});
+ if(!signals.length)signals.push({level:'warn',title:'Estructura sin historial comparable',text:'Este reporte no expone una serie histórica compatible; se analiza con los campos disponibles sin asumir información faltante.'});
+ return {
+  mode:'deep',generic:true,observations:0,
+  currentFinancialDebt:current||null,currentOverdueSbs:overdue||0,currentUnpaidDocs:docs||0,
+  creditor:'',creditorDays:days||0,peakDebt:0,peakDebtDate:'',peakOverdue:0,peakOverdueDate:'',
+  debtReductionFromPeak:null,redPeriods:0,yellowPeriods:0,greenPeriods:0,
+  signals,recent:[],history:[],profile:profile?.template||'Estructura adaptable',
+  institutions:(institutions||[]).slice(0,12)
+ };
+}
 function sanitizePersonName(value=''){
  const raw=String(value||'').replace(/[|;,_]+/g,' ').replace(/\s+/g,' ').trim();
  if(!raw||raw.length<2||raw.length>70||/\d/.test(raw))return '';
@@ -475,24 +531,26 @@ function sentinelFirstGivenName(value=''){
  if(words.length>=3)return words[2];
  return words[0]||'';
 }
-function extractPersonName(text=''){
+function extractPersonName(text='',profile=null){
  const source=String(text||'');
 
- // Sentinel muestra el titular en formato: DNI ######## - APELLIDO APELLIDO NOMBRE(S)
+ // Esta inversión de apellidos/nombres solo se aplica a estructuras Sentinel.
  const sentinelPatterns=[
   /\bDNI\s+\d{8}\s*-\s*([A-ZÁÉÍÓÚÜÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÜÑ]{2,}){2,4})\b/,
   /\bDNI\s+\d{8}\s+([A-ZÁÉÍÓÚÜÑ]{2,}(?:\s+[A-ZÁÉÍÓÚÜÑ]{2,}){2,4})\s+[\d.,]+\s+[\d.,]+/
  ];
- for(const re of sentinelPatterns){
-  const m=source.match(re);
-  const given=sentinelFirstGivenName(m?.[1]||'');
-  if(given)return given;
+ if(profile?.family==='sentinel'){
+  for(const re of sentinelPatterns){
+   const m=source.match(re);
+   const given=sentinelFirstGivenName(m?.[1]||'');
+   if(given)return given;
+  }
  }
 
  const patterns=[
-  /(?:nombres?\s+y\s+apellidos?|nombre\s+completo)\s*[:\-]?\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i,
-  /(?:titular|nombre)\s*[:\-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i,
-  /(?:cliente)\s*[:\-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i
+  /(?:nombres?\s+y\s+apellidos?|nombre\s+completo|nombre\s+del\s+titular)\s*[:\-]?\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i,
+  /(?:titular|nombre|asegurado|solicitante)\s*[:\-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i,
+  /(?:cliente|persona)\s*[:\-]\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+(?:\s+[A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑa-záéíóúüñ'.-]+){0,4})/i
  ];
  for(const re of patterns){
   const m=source.match(re);
