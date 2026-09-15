@@ -1692,12 +1692,12 @@ function loadAnalysis(a,isDemo=false,filename='',options={}){
  $('#confidenceValue').textContent='Confianza '+(x.confidence||0)+'%';
  const visibleName=firstName(x.client.name||'Cliente');
  $('#clientName').textContent=visibleName;
- $('#clientSubline').textContent=[x.client.document||'Documento no informado',x.client.age,x.client.reportDate].filter(Boolean).join(' · ');
+ $('#clientSubline').textContent=[x.client.document,x.client.age,x.client.reportDate].filter(isMeaningfulDisplayValue).join(' · ');
  const scoreInfo=renderScoreGauge(x.score);
  setScoreFace($('#clientScoreFace'),x.score);
  $('#riskBadge').textContent=scoreInfo.category;
  $('#scoreDescription').textContent=x.scoreDescription||'Sin interpretación suficiente.';
- const dc=Number(x.debtChange);$('#debtDelta').textContent=Number.isFinite(dc)&&dc!==0?(dc<0?'↓ Deuda -':'↑ Deuda +')+Math.abs(dc).toFixed(2)+'%':'Variación de deuda no determinada';
+ const dc=Number(x.debtChange),deltaEl=$('#debtDelta');if(deltaEl){const hasDelta=Number.isFinite(dc)&&dc!==0;deltaEl.textContent=hasDelta?(dc<0?'↓ Deuda -':'↑ Deuda +')+Math.abs(dc).toFixed(2)+'%':'';deltaEl.classList.toggle('hidden',!hasDelta)}
  $('#executiveSummary').textContent=x.summary||'No se generó resumen.';
  $('#summaryTags').innerHTML=x.tags.map(t=>'<span>'+esc(t)+'</span>').join('');
  $('#alertsGrid').innerHTML=x.alerts.map(v=>'<div class="alert '+esc(v.level)+'"><div class="alert-top"><i class="alert-dot"></i><b>'+esc(v.title)+'</b></div><p>'+esc(v.text)+'</p></div>').join('')||'<div class="empty-line">Sin alertas identificadas.</div>';
@@ -1931,9 +1931,8 @@ function renderChart(series){
 function renderComposition(items){const vals=items.map(v=>Number(v.value)||0),total=vals.reduce((a,b)=>a+b,0)||1;$('#debtComposition').innerHTML=items.map((v,i)=>{const pct=Math.max(0,Math.min(100,vals[i]/total*100));return '<div class="composition-item"><div class="composition-top"><b>'+esc(v.label)+'</b><span>'+money(v.value)+' · '+pct.toFixed(0)+'%</span></div><div class="bar"><i style="width:'+pct+'%"></i></div></div>'}).join('')||'<div class="empty-line">Sin composición disponible.</div>'}
 function renderMonthly(items){$('#monthlyBehavior').innerHTML=items.map(v=>{const s=String(v.status||'').toLowerCase(),c=/normal|al día/.test(s)?'good':/mora|vencid|impag|pérdida/.test(s)?'bad':'warn',width=/normal|al día/.test(s)?100:/mora|vencid|impag|pérdida/.test(s)?35:65;return '<div class="month-row"><span>'+esc(v.period)+'</span><div class="month-track"><i class="'+c+'" style="width:'+width+'%"></i></div><b>'+esc(v.status||'—')+'</b></div>'}).join('')||'<div class="empty-line">Sin historial mensual estructurado.</div>'}
 
-function chartEmpty(svg,message='No disponible en este reporte'){
- if(!svg)return;
- svg.innerHTML='<text x="380" y="135" text-anchor="middle" class="sentinel-label">'+esc(message)+'</text>';
+function chartEmpty(svg){
+ if(svg)svg.innerHTML='';
 }
 function gridLines(w,h,p,yTicks=4){
  let out='';
@@ -1995,9 +1994,9 @@ function renderCurrentVsOverdue(items){
 }
 function renderPieChart(target,items,palette){
  const box=$(target);if(!box)return;
- if(!items.length){box.innerHTML='<div class="chart-empty">No disponible en este reporte</div>';return}
+ if(!items.length){box.innerHTML='';return}
  const vals=items.map(v=>Math.max(0,Number(v.value)||0)),total=vals.reduce((a,b)=>a+b,0);
- if(total<=0){box.innerHTML='<div class="chart-empty">No disponible en este reporte</div>';return}
+ if(total<=0){box.innerHTML='';return}
  let acc=0,stops=[];
  vals.forEach((v,i)=>{const a=acc/total*100;acc+=v;const b=acc/total*100;stops.push((palette[i%palette.length])+' '+a.toFixed(2)+'% '+b.toFixed(2)+'%')});
  const legend=items.map((v,i)=>'<div class="pie-legend-row"><i style="background:'+palette[i%palette.length]+'"></i><span>'+esc(v.label)+'</span><b>'+((Number(v.value)||0)/total*100).toFixed(1)+'%</b></div>').join('');
@@ -2016,15 +2015,44 @@ function fallbackCharts(x){
 }
 function renderReportCharts(x){
  const rc=x.reportCharts||{},fb=fallbackCharts(x);
- const use=(k)=>Array.isArray(rc[k])&&rc[k].length?rc[k]:fb[k];
- renderNoteEvolution(use('noteEvolution'));
- renderClassification(use('classificationHistory'));
- renderOverdueType(use('overdueByType'));
- renderPieChart('#overdueShareChart',use('overdueShare'),['#64d2dc','#9a55dc','#f0a04b','#59bd67']);
- renderCurrentVsOverdue(use('currentVsOverdue'));
- renderPieChart('#institutionShareChart',use('institutionShare'),['#5f93ba','#65c856','#f3d94f','#efa04b','#9a55dc','#64d2dc']);
+ const use=(k)=>Array.isArray(rc[k])&&rc[k].length?rc[k]:(Array.isArray(fb[k])?fb[k]:[]);
+ const note=use('noteEvolution');
+ const classification=use('classificationHistory');
+ const overdueType=use('overdueByType');
+ const overdueShare=use('overdueShare').filter(v=>Number(v.value)>0);
+ const currentVs=use('currentVsOverdue');
+ const institution=use('institutionShare').filter(v=>Number(v.value)>0);
+
+ toggleBlock('#noteEvolutionSection',note.length>1);
+ toggleBlock('#classificationSection',classification.length>0);
+ toggleBlock('#overdueTypeSection',overdueType.length>0&&overdueType.some(v=>(Number(v.sbs)||0)+(Number(v.other)||0)>0));
+ toggleBlock('#overdueShareSection',overdueShare.length>0);
+ toggleBlock('#currentVsOverdueSection',currentVs.length>0&&currentVs.some(v=>(Number(v.current)||0)+(Number(v.overdue)||0)>0));
+ toggleBlock('#institutionShareSection',institution.length>0);
+
+ renderNoteEvolution(note);
+ renderClassification(classification);
+ renderOverdueType(overdueType);
+ renderPieChart('#overdueShareChart',overdueShare,['#64d2dc','#9a55dc','#f0a04b','#59bd67']);
+ renderCurrentVsOverdue(currentVs);
+ renderPieChart('#institutionShareChart',institution,['#5f93ba','#65c856','#f3d94f','#efa04b','#9a55dc','#64d2dc']);
 }
-function renderCoverage(x){const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;$('#coverageBox').innerHTML='<div class="coverage-item"><span>Fuente detectada</span><b>'+esc(s.provider||'No identificada')+'</b></div><div class="coverage-item"><span>Tipo de reporte</span><b>'+esc(s.type||'No identificado')+'</b></div><div class="coverage-item"><span>Estructura detectada</span><b>'+esc(s.template||'Adaptable')+'</b></div><div class="coverage-item"><span>Método de lectura</span><b>'+esc(s.extractionMode||'Texto digital')+'</b></div><div class="coverage-item"><span>Páginas del reporte</span><b>'+esc(s.totalPages||'No informado')+'</b></div><div class="coverage-item"><span>Páginas leídas visualmente</span><b>'+esc(s.visualPages||0)+'</b></div><div class="coverage-item"><span>Periodo cubierto</span><b>'+esc(s.periodCovered||'No informado')+'</b></div><div class="coverage-item"><span>Secciones estructuradas</span><b>'+det+(exp?' / '+exp:'')+'</b></div><div class="coverage-item"><span>Modo de análisis</span><b>'+esc(s.analysisMode==='deep'?'Profundo':'Rápido')+'</b></div><div class="coverage-item"><span>Confianza de extracción</span><b>'+esc(x.confidence||0)+'%</b></div>'}
+function renderCoverage(x){
+ const s=x.sourceReport||{},det=Number(s.sectionsDetected)||x.reportSections.length,exp=Number(s.sectionsExpected)||det;
+ const rows=[
+  ['Fuente detectada',s.provider],
+  ['Tipo de reporte',s.type],
+  ['Estructura detectada',s.template],
+  ['Método de lectura',s.extractionMode],
+  ['Páginas del reporte',s.totalPages],
+  ['Páginas leídas visualmente',s.visualPages!=null?String(s.visualPages):''],
+  ['Periodo cubierto',s.periodCovered],
+  ['Secciones estructuradas',det?(det+(exp?' / '+exp:'')):''],
+  ['Modo de análisis',s.analysisMode==='deep'?'Profundo':s.analysisMode==='fast'?'Rápido':''],
+  ['Confianza de extracción',x.confidence!=null?String(x.confidence)+'%':'']
+ ].filter(([,v])=>isMeaningfulDisplayValue(v));
+ $('#coverageBox').innerHTML=rows.map(([label,value])=>'<div class="coverage-item"><span>'+esc(label)+'</span><b>'+esc(value)+'</b></div>').join('');
+}
 
 $('#copyActionsBtn')?.addEventListener('click',async()=>{if(!state.analysis)return;const t=state.analysis.recommendations.map((r,i)=>(i+1)+'. '+r.title+'\n'+r.text).join('\n\n');await navigator.clipboard.writeText(t);$('#copyActionsBtn').textContent='Copiado';setTimeout(()=>$('#copyActionsBtn').textContent='Copiar',1200)});
 $$('[data-copy]').forEach(b=>b.addEventListener('click',async()=>{await navigator.clipboard.writeText($(b.dataset.copy)?.innerText||'');b.textContent='Copiado';setTimeout(()=>b.textContent='Copiar',1000)}));
