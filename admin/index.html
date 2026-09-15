@@ -83,7 +83,7 @@
           </label>
           <div id="newDropZone" class="drawer-drop-zone">
             <b>Arrastra el PDF aquí</b>
-            <small>Sentinel digital, escaneado o mixto</small>
+            <small>Reporte crediticio digital, escaneado o mixto</small>
           </div>
         </div>
 
@@ -117,8 +117,8 @@
           <div class="upload-icon">PDF</div>
           <div>
             <span class="eyebrow">NUEVO REPORTE</span>
-            <h2>Analizar reporte Sentinel</h2>
-            <p>Admite distintas estructuras de reporte. El sistema identifica sus secciones antes de interpretar los datos.</p>
+            <h2>Analizar reporte crediticio</h2>
+            <p>Detecta automáticamente la estructura del PDF y adapta la lectura a Sentinel, Experian, Equifax/Infocorp, SBS u otros reportes.</p>
           </div>
           <label class="btn primary file-btn">Seleccionar PDF<input id="pdfInput" type="file" accept="application/pdf"></label>
           <div class="analysis-mode-picker" aria-label="Profundidad del análisis">
@@ -145,7 +145,7 @@
             </div>
           </div>
           <div class="workspace-meta">
-            <div class="workspace-status-group"><span id="reportTypeBadge" class="report-badge">Sentinel · Reporte detectado</span><span id="analysisMeta">Procesado ahora</span><span id="reportReadBadge" class="read-status-badge"><span class="read-status-track"><i id="reportReadBar"></i></span><b id="reportReadPct">0%</b><small>leído</small></span><span id="aiWorkBadge" class="ai-work-badge waiting">IA en espera</span><span id="aiInlineError" class="ai-inline-error hidden"></span></div>
+            <div class="workspace-status-group"><span id="reportTypeBadge" class="report-badge">Reporte crediticio · estructura detectada</span><span id="analysisMeta">Procesado ahora</span><span id="reportReadBadge" class="read-status-badge"><span class="read-status-track"><i id="reportReadBar"></i></span><b id="reportReadPct">0%</b><small>leído</small></span><span id="aiWorkBadge" class="ai-work-badge waiting">IA en espera</span><span id="aiInlineError" class="ai-inline-error hidden"></span></div>
             <div class="workspace-meta-right admin-only"><span id="confidenceValue">Confianza —</span><button id="printBtn" class="mini-btn">Guardar PDF</button></div>
           </div>
 
@@ -355,6 +355,6 @@
     </main>
   </div>
 
-  <script type="module" src="/admin/admin.js?v=20260914-qwenfields1"></script>
+  <script type="module" src="/admin/admin.js?v=20260914-multireport1"></script>
 </body>
 </html>
