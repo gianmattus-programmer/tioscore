@@ -1258,23 +1258,7 @@ let cpuQwenWorker=null;
 let cpuQwenSeq=0;
 const cpuQwenPending=new Map();
 
-const LOCAL_AI_MODULE='https://esm.run/@mlc-ai/web-llm@0.2.85';
-const LOCAL_AI_CANDIDATES_F16=[
- 'Qwen2.5-3B-Instruct-q4f16_1-MLC',
- 'Qwen3.5-2B-q4f16_1-MLC',
- 'Qwen3-1.7B-q4f16_1-MLC',
- 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
- 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC'
-];
-const LOCAL_AI_CANDIDATES_F32=[
- 'Qwen2.5-3B-Instruct-q4f32_1-MLC',
- 'Qwen3.5-2B-q4f32_1-MLC',
- 'Qwen3-1.7B-q4f32_1-MLC',
- 'Qwen2.5-1.5B-Instruct-q4f32_1-MLC',
- 'Qwen2.5-0.5B-Instruct-q4f32_1-MLC'
-];
-const LOCAL_AI_WORKER='/admin/local-ai-worker.js?v=20260914-qwenreal1';
-const CPU_QWEN_WORKER='/admin/qwen-cpu-worker.js?v=20260914-qwencpu1';
+const CPU_QWEN_WORKER='/admin/qwen-cpu-worker.js?v=20260915-stablewasm1';
 
 function setLocalAiStatus(textValue,ok=false){
  const el=$('#aiStatus');
@@ -1290,65 +1274,50 @@ function setInlineAiMessage(message='',kind='error'){
  el.title=text;
  el.className='ai-inline-error '+(kind==='info'?'info':kind==='ok'?'ok':'');
 }
-function localAiProgressText(p){
- const raw=String(p?.text||p?.status||'Cargando IA local…');
- const pct=Number(p?.progress);
- return Number.isFinite(pct)?raw+' '+Math.round(pct*100)+'%':raw;
-}
 async function inspectLocalHardware(){
  if(localAiHardware)return localAiHardware;
- const result={webgpu:false,shaderF16:false,label:'No disponible',detail:''};
- if(!('gpu' in navigator)){
-  result.detail='WebGPU no está disponible en este navegador/equipo.';
-  localAiHardware=result;
-  return result;
- }
- try{
-  const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
-  if(!adapter){result.detail='WebGPU existe, pero no se encontró un adaptador compatible.';localAiHardware=result;return result}
-  const info=adapter.info||{};
-  result.webgpu=true;
-  result.shaderF16=adapter.features?.has?.('shader-f16')||false;
-  result.label=[info.vendor,info.architecture].filter(Boolean).join(' · ')||'WebGPU compatible';
-  result.detail='Qwen local · '+(result.shaderF16?'q4f16':'q4f32')+' · Web Worker';
- }catch(e){
-  result.detail='WebGPU detectado, pero falló la inicialización del adaptador.';
- }
- localAiHardware=result;
- return result;
+ const cores=Math.max(1,Number(navigator.hardwareConcurrency)||2);
+ const memory=Math.max(0,Number(navigator.deviceMemory)||0);
+ localAiHardware={
+  webgpu:false,
+  label:cores+' hilos'+(memory?' · '+memory+' GB RAM aprox.':''),
+  detail:'Motor estable CPU/WASM · sin dependencia de WebGPU'
+ };
+ return localAiHardware;
 }
 function renderHardwareStatus(hw){
  const el=$('#aiHardware');if(!el)return;
- el.textContent=hw.webgpu?(hw.label+' · compatible'):(hw.detail||'No compatible · se usará CPU/WASM');
- el.className=hw.webgpu?'ok':'';
+ el.textContent=(hw?.label||'CPU local')+' · WASM';
+ el.className='ok';
 }
 function cpuWorker(){
  if(cpuQwenWorker)return cpuQwenWorker;
- const worker=new Worker(CPU_QWEN_WORKER,{type:'module',name:'tioscore-qwen-cpu'});
+ const worker=new Worker(CPU_QWEN_WORKER,{type:'module',name:'tioscore-qwen-stable'});
  worker.onmessage=e=>{
   const msg=e.data||{},pending=cpuQwenPending.get(msg.id);
   if(!pending)return;
   if(msg.type==='status'){
-   setLocalAiStatus(msg.message||'Qwen CPU…');
-   setInlineAiMessage(msg.message||'Preparando Qwen CPU…','info');
+   setLocalAiStatus(msg.message||'Qwen local…');
+   setInlineAiMessage(msg.message||'Preparando Qwen local…','info');
    return;
   }
   if(msg.type==='progress'){
    const pct=Number(msg.progress);
    const p=Number.isFinite(pct)?Math.max(0,Math.min(100,Math.round(pct))):null;
-   const label='Qwen CPU'+(p!=null?' · '+p+'%':'')+' · '+String(msg.message||'descargando');
+   const label='Qwen local'+(p!=null?' · '+p+'%':'')+' · '+String(msg.message||'cargando');
    setLocalAiStatus(label);
    setInlineAiMessage(label,'info');
    return;
   }
   clearTimeout(pending.timer);
   cpuQwenPending.delete(msg.id);
-  if(msg.type==='error')pending.reject(new Error(msg.message||'Error Qwen CPU'));
+  if(msg.type==='error')pending.reject(new Error(msg.message||'Error Qwen local'));
   else pending.resolve(msg);
  };
  worker.onerror=e=>{
-  const err=new Error(e?.message||'No se pudo iniciar el Worker de Qwen CPU.');
+  const err=new Error(e?.message||'No se pudo iniciar el Worker de Qwen local.');
   for(const [id,p] of cpuQwenPending){clearTimeout(p.timer);p.reject(err);cpuQwenPending.delete(id)}
+  cpuQwenWorker=null;
  };
  cpuQwenWorker=worker;
  return worker;
@@ -1359,75 +1328,24 @@ function cpuQwenRequest(type,payload={},timeoutMs=600000){
  return new Promise((resolve,reject)=>{
   const timer=setTimeout(()=>{
    cpuQwenPending.delete(id);
-   reject(new Error('Qwen CPU superó el tiempo máximo de espera.'));
+   reject(new Error('Qwen local superó el tiempo máximo de espera.'));
   },timeoutMs);
   cpuQwenPending.set(id,{resolve,reject,timer});
   worker.postMessage({id,type,...payload});
  });
 }
-async function initWebGpuQwen(hw){
- setLocalAiStatus('Preparando Qwen de alta precisión por WebGPU…');
- const webllm=await import(LOCAL_AI_MODULE);
- const ids=(webllm.prebuiltAppConfig?.model_list||[]).map(x=>x.model_id).filter(Boolean);
- const preferred=(hw.shaderF16?LOCAL_AI_CANDIDATES_F16:LOCAL_AI_CANDIDATES_F32).filter(id=>ids.includes(id));
- if(!preferred.length)throw new Error('No se encontró un modelo Qwen compatible en WebLLM.');
- let lastError='';
- for(let index=0;index<preferred.length;index++){
-  const modelId=preferred[index];
-  try{
-   localAiModelId=modelId;
-   setLocalAiStatus('Cargando '+modelId.replace('-q4f16_1-MLC','').replace('-q4f32_1-MLC','')+'…');
-   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
-   localAiWorker=new Worker(LOCAL_AI_WORKER,{type:'module',name:'tioscore-local-ai'});
-   const engine=await webllm.CreateWebWorkerMLCEngine(
-    localAiWorker,
-    modelId,
-    {
-     initProgressCallback:p=>{
-      const msg=localAiProgressText(p);
-      setLocalAiStatus(msg);
-      setInlineAiMessage(msg,'info');
-     },
-     logLevel:'WARN'
-    },
-    {context_window_size:4096}
-   );
-   setLocalAiStatus('Verificando '+modelId+'…');
-   const test=await Promise.race([
-    engine.chat.completions.create({messages:[{role:'user',content:'Responde solo: OK'}],temperature:0,max_tokens:5}),
-    new Promise((_,reject)=>setTimeout(()=>reject(new Error('La autoprueba superó 90 segundos.')),90000))
-   ]);
-   const probe=String(test?.choices?.[0]?.message?.content||'').trim();
-   if(!probe)throw new Error('El modelo cargó, pero no produjo texto.');
-   localAiBackend='webgpu';
-   localAiEngine=engine;
-   localAiGpuError='';
-   localAiLastError='';
-   setLocalAiStatus('Qwen verificado · '+modelId,true);
-   setInlineAiMessage('Qwen de alta precisión funcionando por WebGPU.','ok');
-   const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · WebGPU · '+probe.slice(0,20);testEl.className='ok'}
-   const modelEl=$('#aiModelActive');if(modelEl)modelEl.textContent=modelId;
-   return engine;
-  }catch(e){
-   lastError=String(e?.message||e||'fallo al cargar modelo');
-   if(localAiWorker){try{localAiWorker.terminate()}catch{}}
-   localAiWorker=null;localAiEngine=null;
-   if(index<preferred.length-1)setInlineAiMessage('El modelo '+modelId+' no pudo iniciar; probando una versión más ligera…','info');
-  }
- }
- throw new Error('Ningún Qwen WebGPU pudo iniciar. Último error: '+lastError);
-}
-async function initCpuQwen(reason=''){
- if(reason)setInlineAiMessage('WebGPU no disponible: '+reason+' · iniciando Qwen por CPU/WASM.','info');
- setLocalAiStatus('Preparando Qwen CPU/WASM…');
+async function initStableQwen(){
+ setLocalAiStatus('Preparando Qwen estable · CPU/WASM…');
+ setInlineAiMessage('Primera carga: preparando Qwen local estable. Después se reutiliza desde caché.','info');
  const ready=await cpuQwenRequest('init',{},600000);
  localAiBackend='cpu';
- localAiModelId=String(ready.model||'Qwen2.5-0.5B-Instruct')+' · CPU/WASM';
- localAiEngine={kind:'cpu'};
+ localAiModelId=String(ready.model||'Qwen2.5-0.5B-Instruct')+' · WASM';
+ localAiEngine={kind:'cpu-wasm'};
  localAiLastError='';
- setLocalAiStatus('Qwen CPU verificado',true);
- setInlineAiMessage('Qwen funcionando por CPU/WASM.','ok');
- const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · CPU/WASM · '+String(ready.probe||'OK').slice(0,20);testEl.className='ok'}
+ localAiGpuError='';
+ setLocalAiStatus('Qwen local verificado · CPU/WASM',true);
+ setInlineAiMessage('Qwen local estable funcionando por CPU/WASM.','ok');
+ const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Correcta · WASM · '+String(ready.probe||'OK').slice(0,20);testEl.className='ok'}
  const modelEl=$('#aiModelActive');if(modelEl)modelEl.textContent=localAiModelId;
  return localAiEngine;
 }
@@ -1437,29 +1355,15 @@ async function getLocalAiEngine(){
  localAiPromise=(async()=>{
   const hw=await inspectLocalHardware();
   renderHardwareStatus(hw);
-  let gpuReason='';
-  if(hw.webgpu){
-   try{return await initWebGpuQwen(hw)}
-   catch(e){
-    gpuReason=String(e?.message||e||'fallo WebGPU');
-    localAiGpuError=gpuReason;
-    if(localAiWorker){try{localAiWorker.terminate()}catch{}}
-    localAiWorker=null;
-    setInlineAiMessage('Qwen WebGPU falló: '+gpuReason+' · probando CPU/WASM.','info');
-   }
-  }else{
-   gpuReason=hw.detail||'WebGPU no disponible';
-   localAiGpuError=gpuReason;
-  }
-  try{return await initCpuQwen(gpuReason)}
+  try{return await initStableQwen()}
   catch(e){
-   const cpuErr=String(e?.message||e||'fallo CPU/WASM');
-   localAiLastError='WebGPU: '+gpuReason+' | CPU/WASM: '+cpuErr;
-   setLocalAiStatus('Qwen local no disponible');
-   setInlineAiMessage(localAiLastError,'error');
-   const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Falló · '+localAiLastError.slice(0,180);testEl.className=''}
+   const msg=String(e?.message||e||'Qwen local no disponible');
+   localAiLastError=msg;
    localAiEngine=null;localAiBackend='';
-   throw new Error(localAiLastError);
+   setLocalAiStatus('Qwen local no disponible');
+   setInlineAiMessage(msg,'error');
+   const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Falló · '+msg.slice(0,180);testEl.className=''}
+   throw e;
   }
  })();
  try{return await localAiPromise}
@@ -1631,8 +1535,8 @@ async function processPdf(file,{background=false}={}){
     loadAnalysis(local,false,file.name,{skipReveal:true,skipHistory:true,keepHistoryId:true});
     $('#analysisMeta').textContent='Reporte leído 100% · IA completada · '+dateNow();
     setWorkspaceReadProgress(100);
-    setAiWorkStatus('done',localAiBackend==='cpu'?'IA lista · CPU':'IA lista · GPU',true);
-    setInlineAiMessage('Qwen completó la interpretación por '+(localAiBackend==='cpu'?'CPU/WASM':'WebGPU')+'.','ok');
+    setAiWorkStatus('done','IA lista · local',true);
+    setInlineAiMessage('Qwen completó la interpretación por CPU/WASM estable.','ok');
    }
    await persistHistoryAnalysis(analysisHistoryId,local).catch(()=>{});
   }).catch(err=>{
@@ -2823,13 +2727,12 @@ function renderHistory(){
 $('#historySearch')?.addEventListener('input',e=>{state.historyFilter=e.target.value||'';renderHistory()});
 
 async function retryLocalAI(){
- setLocalAiStatus('Reiniciando Qwen…');
- setInlineAiMessage('Reintentando Qwen local…','info');
+ setLocalAiStatus('Reiniciando Qwen estable…');
+ setInlineAiMessage('Reiniciando el motor local CPU/WASM…','info');
  const testEl=$('#aiSelfTest');if(testEl){testEl.textContent='Reintentando…';testEl.className=''}
- try{if(localAiWorker)localAiWorker.terminate()}catch{}
  try{if(cpuQwenWorker)cpuQwenWorker.terminate()}catch{}
  for(const [id,p] of cpuQwenPending){clearTimeout(p.timer);p.reject(new Error('Reinicio manual'));cpuQwenPending.delete(id)}
- localAiWorker=null;cpuQwenWorker=null;localAiEngine=null;localAiPromise=null;localAiBackend='';localAiModelId='';localAiLastError='';localAiGpuError='';localAiHardware=null;
+ cpuQwenWorker=null;localAiEngine=null;localAiPromise=null;localAiBackend='';localAiModelId='';localAiLastError='';localAiGpuError='';localAiHardware=null;
  try{await getLocalAiEngine()}catch{}
 }
 $('#retryLocalAi')?.addEventListener('click',retryLocalAI);
@@ -2838,11 +2741,11 @@ async function checkAIStatus(){
  const hw=await inspectLocalHardware();
  renderHardwareStatus(hw);
  if(localAiEngine){
-  setLocalAiStatus('Qwen verificado · '+(localAiBackend==='cpu'?'CPU/WASM':'WebGPU'),true);
+  setLocalAiStatus('Qwen local verificado · CPU/WASM',true);
   return;
  }
  if(localAiLastError){setLocalAiStatus('Qwen local no disponible');setInlineAiMessage(localAiLastError,'error');return}
- setLocalAiStatus(hw.webgpu?'Qwen WebGPU · precalentando…':'Qwen CPU/WASM · precalentando…');
+ setLocalAiStatus('Qwen estable · precalentando CPU/WASM…');
 }
 
 bootstrap();
