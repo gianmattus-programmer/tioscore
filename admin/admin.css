@@ -1136,3 +1136,26 @@ html,body{max-width:100%;overflow-x:hidden}
 .five-year-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
 @media(max-width:720px){.five-year-kpis{grid-template-columns:1fr 1fr}}
 @media(max-width:480px){.five-year-kpis{grid-template-columns:1fr}}
+
+
+/* ===== Historial financiero ampliado · 2026-09-16 ===== */
+.financial-history-signals{display:grid;gap:7px;margin:0 0 10px}
+.financial-history-alert{padding:10px 11px;border:1px solid var(--line);border-left-width:3px;border-radius:8px;background:#fff}
+.financial-history-alert b{display:block;font-size:.67rem;color:var(--ink)}
+.financial-history-alert p{margin:3px 0 0;font-size:.61rem;line-height:1.45;color:var(--muted)}
+.financial-history-alert.good{border-left-color:var(--green);background:#f5fbf7}
+.financial-history-alert.warn{border-left-color:var(--amber);background:#fffaf0}
+.financial-history-alert.bad{border-left-color:var(--red);background:#fff5f4}
+.financial-history-alert.compare{border-left-color:#55758f;background:#f6f9fb}
+.financial-secondary-charts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}
+.financial-mini-card{border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden;min-width:0}
+.financial-mini-head{display:grid;gap:2px;padding:9px 10px;border-bottom:1px solid var(--line);background:#faf9f6}
+.financial-mini-head b{font-size:.63rem;color:var(--ink);text-transform:uppercase;letter-spacing:.035em}
+.financial-mini-head small{font-size:.54rem;color:var(--muted)}
+.financial-mini-wrap{position:relative;height:155px;padding:4px 3px 0}
+.financial-mini-wrap svg{display:block;width:100%;height:100%;overflow:visible}
+.financial-mini-axis{fill:#858a87;font-size:15px;font-weight:700}
+.five-year-line.entities{stroke:#527a95}.five-year-line.normal{stroke:#2f8a5b}.five-year-line.signal{stroke:#c08a22}.five-year-line.risk{stroke:#b34b43}
+.five-year-point.entities{fill:#527a95}.five-year-point.normal{fill:#2f8a5b}.five-year-point.signal{fill:#c08a22}.five-year-point.risk{fill:#b34b43}
+@media(max-width:1120px){.financial-secondary-charts{grid-template-columns:1fr 1fr}.financial-mini-card[data-mini="risk"]{grid-column:1/-1}}
+@media(max-width:680px){.financial-secondary-charts{grid-template-columns:1fr}.financial-mini-card[data-mini="risk"]{grid-column:auto}.financial-mini-wrap{height:145px}}
