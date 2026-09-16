@@ -65,17 +65,20 @@ self.onmessage=async e=>{
   try{
     const gen=await ensureGenerator(id);
     if(type==="init"){
-      const out=await gen([{role:"user",content:"Responde solo: OK"}],{max_new_tokens:5,do_sample:false});
+      const out=await gen([{role:"user",content:"Responde solo: OK"}],{max_new_tokens:2,do_sample:false,use_cache:true,return_full_text:false});
       const text=generatedText(out);
       if(!text)throw new Error("Qwen local cargó pero no generó texto.");
       send(id,"ready",{model:MODEL_ID,probe:text.slice(0,30),backend});
       return;
     }
     if(type==="generate"){
+      send(id,"status",{message:"Qwen local está redactando la mejora opcional…",backend});
       const out=await gen(messages||[],{
         max_new_tokens:maxNewTokens,
         do_sample:false,
-        repetition_penalty:1.06
+        repetition_penalty:1.04,
+        use_cache:true,
+        return_full_text:false
       });
       const text=generatedText(out);
       if(!text)throw new Error("Qwen local no devolvió contenido.");
