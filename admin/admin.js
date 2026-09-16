@@ -1535,6 +1535,8 @@ async function processPdf(file,{background=false}={}){
   local.sourceReport.interpretationEngine='Reglas locales · respuesta inmediata';
 
   // Mostrar el análisis completo por reglas inmediatamente. Qwen NO bloquea la ficha.
+  // Es un reporte nuevo: liberar el id de la ficha anterior para comparar contra el último reporte real del mismo cliente.
+  state.currentHistoryId=null;
   localShown=true;
   loadAnalysis(local,false,file.name,{skipReveal:false,skipHistory:true});
   $('#analysisMeta').textContent='Reporte leído 100% · '+(analysisMode==='deep'?'lectura profunda lista · ':'')+'IA local mejorando en segundo plano';
