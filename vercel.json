@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/guianegociar",
+      "destination": "/guianegociar/index.html"
+    },
+    {
       "source": "/assets/:path*",
       "destination": "https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/:path*"
     }
@@ -178,6 +182,33 @@
     },
     {
       "source": "/admin/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/guianegociar",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/guianegociar/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/guianegociar/index.html",
       "headers": [
         {
           "key": "Cache-Control",
