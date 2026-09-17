@@ -5,6 +5,10 @@
       "destination": "/guianegociar/index.html"
     },
     {
+      "source": "/compendio",
+      "destination": "/compendio/index.html"
+    },
+    {
       "source": "/assets/:path*",
       "destination": "https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/:path*"
     }
@@ -209,6 +213,33 @@
     },
     {
       "source": "/guianegociar/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/compendio",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/compendio/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    },
+    {
+      "source": "/compendio/:path*",
       "headers": [
         {
           "key": "Cache-Control",
