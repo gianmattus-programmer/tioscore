@@ -1,126 +1,51 @@
 {
   "rewrites": [
-    {
-      "source": "/guianegociar",
-      "destination": "/guianegociar/index.html"
-    },
-    {
-      "source": "/compendio",
-      "destination": "https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/index.html"
-    },
-    {
-      "source": "/compendio/",
-      "destination": "https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/index.html"
-    },
-    {
-      "source": "/compendio/compendio.css",
-      "destination": "https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/compendio.css"
-    },
-    {
-      "source": "/compendio/compendio.js",
-      "destination": "https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/compendio.js"
-    },
-    {
-      "source": "/compendio/assets/:path*",
-      "destination": "https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/assets/:path*"
-    },
-    {
-      "source": "/assets/:path*",
-      "destination": "https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/:path*"
-    }
+    {"source":"/","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/index.html"},
+    {"source":"/index.html","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/index.html"},
+    {"source":"/guianegociar","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/guianegociar/index.html"},
+    {"source":"/guianegociar/","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/guianegociar/index.html"},
+    {"source":"/guianegociar/index.html","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/guianegociar/index.html"},
+    {"source":"/admin","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/admin/index.html"},
+    {"source":"/admin/","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/admin/index.html"},
+    {"source":"/admin/index.html","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/admin/index.html"},
+    {"source":"/admin/:path*","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/admin/:path*"},
+    {"source":"/compendio","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/index.html"},
+    {"source":"/compendio/","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/index.html"},
+    {"source":"/compendio/index.html","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/index.html"},
+    {"source":"/compendio/compendio.css","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/compendio.css"},
+    {"source":"/compendio/compendio.js","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/compendio.js"},
+    {"source":"/compendio/assets/:path*","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/compendio/assets/:path*"},
+    {"source":"/assets/:path*","destination":"https://raw.githubusercontent.com/gianmattus-programmer/tioscore/main/assets/:path*"}
   ],
   "headers": [
-    {
-      "source": "/",
-      "headers": [{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/reporte/guide.css",
-      "headers": [{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/sidebar.css",
-      "headers": [{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/search-hero.css",
-      "headers": [{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/whatsapp-ui.css",
-      "headers": [{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/responsive-fixes.css",
-      "headers": [{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/minimal-ui.css",
-      "headers": [{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/reporte/guide.js",
-      "headers": [{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/sidebar.js",
-      "headers": [{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/whatsapp-ui.js",
-      "headers": [{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/faq-search.js",
-      "headers": [{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/assets/reporte/reporte-muestra.pdf",
-      "headers": [{"key":"Content-Type","value":"application/pdf"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/admin",
-      "headers": [{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/admin/",
-      "headers": [{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/admin/index.html",
-      "headers": [{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/guianegociar",
-      "headers": [{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/guianegociar/",
-      "headers": [{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/guianegociar/index.html",
-      "headers": [{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/compendio",
-      "headers": [{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/compendio/",
-      "headers": [{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/compendio/compendio.css",
-      "headers": [{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/compendio/compendio.js",
-      "headers": [{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    },
-    {
-      "source": "/compendio/assets/:path*",
-      "headers": [{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]
-    }
+    {"source":"/","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/index.html","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/guianegociar","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/guianegociar/","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/guianegociar/index.html","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/admin","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/admin/","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/admin/index.html","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/admin/admin.css","headers":[{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/admin/admin.js","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/admin/local-ai-worker.js","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/admin/qwen-cpu-worker.js","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/compendio","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/compendio/","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/compendio/index.html","headers":[{"key":"Content-Type","value":"text/html; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/compendio/compendio.css","headers":[{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/compendio/compendio.js","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/compendio/assets/:path*","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/reporte/guide.css","headers":[{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/sidebar.css","headers":[{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/search-hero.css","headers":[{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/whatsapp-ui.css","headers":[{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/responsive-fixes.css","headers":[{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/minimal-ui.css","headers":[{"key":"Content-Type","value":"text/css; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/reporte/guide.js","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/sidebar.js","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/whatsapp-ui.js","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/faq-search.js","headers":[{"key":"Content-Type","value":"application/javascript; charset=utf-8"},{"key":"Cache-Control","value":"no-store, max-age=0"}]},
+    {"source":"/assets/reporte/reporte-muestra.pdf","headers":[{"key":"Content-Type","value":"application/pdf"},{"key":"Cache-Control","value":"no-store, max-age=0"}]}
   ]
 }
